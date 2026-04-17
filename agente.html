@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Horizon CRM - Console do Agente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <style>
+        body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; color: #191c1d; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .hidden-view { display: none !important; }
+    </style>
+</head>
+<body class="antialiased overflow-hidden">
+
+    <section id="view-login" class="min-h-screen w-full flex flex-row">
+        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16">
+            <h1 class="text-3xl font-extrabold text-white mb-4">Horizon CRM</h1>
+            <h2 class="text-5xl font-extrabold text-white leading-tight">Painel Operacional para Analistas</h2>
+        </div>
+        <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white">
+            <div class="w-full max-w-md space-y-8">
+                <header><h3 class="text-3xl font-extrabold mb-2">Bem-vindo</h3><p class="text-gray-500">Acesse o portal de atendimento.</p></header>
+                <form id="login-form" class="space-y-6">
+                    <input type="email" class="w-full p-4 bg-gray-50 border rounded-xl" placeholder="email@horizon.com" required/>
+                    <input type="password" class="w-full p-4 bg-gray-50 border rounded-xl" placeholder="••••••••" required/>
+                    <button type="submit" class="w-full py-4 bg-blue-600 text-white font-bold rounded-xl">Entrar no Console</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <div id="view-app" class="hidden-view h-screen flex">
+        <aside class="w-64 bg-slate-50 border-r border-gray-200 flex flex-col">
+            <div class="p-6 font-black text-blue-700 text-2xl">Horizon</div>
+            <nav class="flex-1 px-4 space-y-2">
+                <button onclick="app.navigate('dashboard')" class="nav-btn w-full text-left p-3 font-bold text-gray-600 hover:bg-gray-200 rounded-lg" data-target="dashboard">Dashboard</button>
+                <button onclick="app.navigate('queue')" class="nav-btn w-full text-left p-3 font-bold text-gray-600 hover:bg-gray-200 rounded-lg" data-target="queue">Fila de Tickets</button>
+                <button onclick="app.navigate('chat')" class="nav-btn w-full text-left p-3 font-bold text-gray-600 hover:bg-gray-200 rounded-lg hidden-view" data-target="chat" id="menu-chat">Chat Ativo</button>
+            </nav>
+            <div class="p-4 border-t"><button onclick="location.reload()" class="w-full text-red-600 font-bold p-3">Sair</button></div>
+        </aside>
+
+        <div class="flex-1 flex flex-col h-screen overflow-hidden">
+            <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0">
+                <div class="font-bold text-sm">Console de Operações</div>
+                <div class="flex items-center gap-4">
+                    <select onchange="app.changeLanguage(this.value)" class="text-xs font-bold uppercase outline-none">
+                        <option value="pt">PT-BR</option>
+                        <option value="en">EN-US</option>
+                        <option value="es">ES</option>
+                    </select>
+                    <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs">AD</div>
+                </div>
+            </header>
+            <main class="flex-1 overflow-y-auto">
+                <section id="sec-dashboard" class="p-8"><h2 class="text-3xl font-bold mb-8">Dashboard</h2></section>
+                <section id="sec-queue" class="p-8 hidden-view">
+                    <h2 class="text-3xl font-bold mb-6">Fila</h2>
+                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <table class="w-full text-left">
+                            <tbody class="divide-y">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="p-5 font-bold">John Doe <span class="block text-xs font-normal text-gray-400">English</span></td>
+                                    <td class="p-5">Integration Timeout</td>
+                                    <td class="p-5 text-right"><button onclick="app.pickTicket('John Doe', 'en')" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">Atender</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                <section id="sec-chat" class="p-6 h-full hidden-view">
+                    <div class="grid grid-cols-12 gap-6 h-full">
+                        <div class="col-span-4 bg-white rounded-xl p-6 border h-fit">
+                            <h3 class="font-bold mb-2" id="chat-name">Nome</h3>
+                            <p class="text-xs text-gray-400" id="chat-lang-info">Idioma</p>
+                        </div>
+                        <div class="col-span-8 bg-white rounded-xl border flex flex-col h-[calc(100vh-160px)]">
+                            <div class="flex-1 p-6 overflow-y-auto" id="chat-history"></div>
+                            <div class="p-4 border-t"><textarea id="chat-input" class="w-full bg-gray-50 p-3 rounded-lg text-sm resize-none" placeholder="Resposta..."></textarea></div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const app = {
+            lang: 'pt',
+            init() {
+                document.getElementById('login-form').onsubmit = (e) => {
+                    e.preventDefault();
+                    document.getElementById('view-login').classList.add('hidden-view');
+                    document.getElementById('view-app').classList.remove('hidden-view');
+                    this.navigate('dashboard');
+                };
+            },
+            navigate(target) {
+                ['dashboard', 'queue', 'chat'].forEach(s => document.getElementById(`sec-${s}`).classList.add('hidden-view'));
+                document.getElementById(`sec-${target}`).classList.remove('hidden-view');
+            },
+            changeLanguage(l) { this.lang = l; },
+            pickTicket(name, custLang) {
+                document.getElementById('chat-name').innerText = name;
+                document.getElementById('chat-lang-info').innerText = `Original: ${custLang.toUpperCase()}`;
+                document.getElementById('menu-chat').classList.remove('hidden-view');
+                this.navigate('chat');
+                this.renderMsg("I'm having a problem.", 'customer', custLang);
+            },
+            renderMsg(text, type, originalLang) {
+                const isAgent = type === 'agent';
+                // Simulação simples de tradução baseada no idioma selecionado pelo analista
+                const translated = (type === 'customer' && this.lang === 'pt') ? "Estou com um problema." : text;
+                const badge = (!isAgent && originalLang !== this.lang) ? `<span class="block text-[9px] mt-1 opacity-50 italic">Traduzido de ${originalLang.toUpperCase()}</span>` : '';
+                
+                document.getElementById('chat-history').innerHTML += `
+                    <div class="mb-4 ${isAgent ? 'text-right' : ''}">
+                        <div class="inline-block p-3 rounded-xl text-sm ${isAgent ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'}">
+                            ${translated} ${badge}
+                        </div>
+                    </div>
+                `;
+            }
+        };
+        app.init();
+    </script>
+</body>
+</html>
