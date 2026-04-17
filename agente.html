@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Horizon CRM - Console do Agente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <style>
+        body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; color: #191c1d; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .hidden-view { display: none !important; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="antialiased overflow-hidden">
+
+    <section id="view-login" class="min-h-screen w-full flex flex-row">
+        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16 text-white">
+            <div class="z-10">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-3xl">cloud</span>
+                    </div>
+                    <h1 class="text-3xl font-extrabold tracking-tight">Horizon CRM</h1>
+                </div>
+                <h2 class="text-6xl font-black leading-tight">Painel Operacional<br/><span class="text-blue-500">Realtime</span></h2>
+            </div>
+            <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+        </div>
+
+        <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white z-10 shadow-2xl">
+            <div class="w-full max-w-md space-y-8">
+                <header>
+                    <h3 class="text-3xl font-extrabold text-slate-900 mb-2">Acesso Restrito</h3>
+                    <p class="text-slate-500 font-medium">Insira suas credenciais para acessar a fila.</p>
+                </header>
+                <form id="login-form" class="space-y-6">
+                    <div class="space-y-4">
+                        <input type="email" id="login-email" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="agente@horizon.com" required/>
+                        <input type="password" id="login-pass" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="••••••••" required/>
+                    </div>
+                    <button type="submit" id="btn-login" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2">
+                        Entrar no Console <span class="material-symbols-outlined text-lg">login</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <div id="view-app" class="hidden-view h-screen flex">
+        
+        <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col text-slate-300 z-20">
+            <div class="p-6">
+                <div class="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                    <span class="material-symbols-outlined text-blue-400">cloud</span> Horizon
+                </div>
+            </div>
+            
+            <nav class="flex-1 px-4 space-y-2 mt-4">
+                <button onclick="agentApp.navigate('queue')" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all bg-slate-800 text-white">
+                    <span class="material-symbols-outlined">confirmation_number</span> Fila de Tickets
+                </button>
+            </nav>
+
+            <div class="p-4 border-t border-slate-800">
+                <button onclick="location.reload()" class="w-full py-3 flex items-center gap-3 px-4 text-red-400 font-bold text-sm hover:bg-red-500/10 rounded-xl transition-colors">
+                    <span class="material-symbols-outlined">logout</span> Sair
+                </button>
+            </div>
+        </aside>
+
+        <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
+            <header class="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0 z-10">
+                <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">Fila de Atendimento</div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-100 text-green-700 rounded-full text-xs font-bold">
+                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online
+                    </div>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-8">
+                <div class="max-w-5xl mx-auto">
+                    <div class="flex justify-between items-end mb-6">
+                        <h2 class="text-3xl font-black text-slate-900">Aguardando Triagem</h2>
+                        <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full" id="queue-count">0 tickets</span>
+                    </div>
+                    
+                    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <tr>
+                                    <th class="p-5">Protocolo / Canal</th>
+                                    <th class="p-5">Cliente</th>
+                                    <th class="p-5">Assunto (TAG 1)</th>
+                                    <th class="p-5 text-right">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100" id="queue-tbody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script type="module" src="js/agent/app.js"></script>
+</body>
+</html>
