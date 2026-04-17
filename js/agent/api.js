@@ -15,7 +15,6 @@ export const agentAPI = {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         
-        // Salva o usuário na tabela profiles com status "is_approved: false"
         if (data.user) {
             const { error: profileError } = await supabase.from('profiles').insert([{ 
                 id: data.user.id, 
@@ -97,6 +96,17 @@ export const agentAPI = {
     async updateRoutingStatus(userId, isActive) {
         const { error } = await supabase.from('profiles').update({ is_routing_active: isActive }).eq('id', userId);
         if (error) throw error;
+    },
+
+    // Nova função: Liga ou desliga uma Skill (Assunto) para o agente
+    async toggleAgentSkill(agentId, subjectId, isAdding) {
+        if (isAdding) {
+            const { error } = await supabase.from('agent_skills').insert([{ agent_id: agentId, subject_id: subjectId }]);
+            if (error) throw error;
+        } else {
+            const { error } = await supabase.from('agent_skills').delete().eq('agent_id', agentId).eq('subject_id', subjectId);
+            if (error) throw error;
+        }
     },
 
     // ------------------------------------

@@ -10,9 +10,8 @@ const App = {
     allSubjects: [],
 
     init() {
-        window.agentApp = this; // Torna o App acessível no HTML (onclick)
+        window.agentApp = this; 
 
-        // 1. EVENTO DE LOGIN / CADASTRO
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login');
@@ -22,7 +21,6 @@ const App = {
             const email = document.getElementById('login-email').value;
             const pass = document.getElementById('login-pass').value;
 
-            // MODO DE CADASTRO
             if (this.isRegisterMode) {
                 const name = document.getElementById('reg-name').value;
                 try {
@@ -37,11 +35,8 @@ const App = {
                 return;
             }
 
-            // MODO DE LOGIN
             try {
                 const authData = await agentAPI.login(email, pass);
-                
-                // Valida na tabela profiles
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
                 
                 if (!profile || !profile.is_approved) {
@@ -52,21 +47,15 @@ const App = {
                 }
 
                 this.currentUser = profile;
-                
-                // Transição de Telas
                 document.getElementById('view-login').classList.add('hidden-view');
                 document.getElementById('view-app').classList.remove('hidden-view');
                 
-                // Libera Gestão de Equipe se for Gestor
                 if (profile.role === 'gestor') {
                     document.getElementById('menu-team').classList.remove('hidden-view');
                     this.allSubjects = await agentAPI.getAllSubjects();
                 }
                 
-                // Sincroniza o botão visual do orquestrador
                 document.getElementById('toggle-routing').checked = profile.is_routing_active;
-
-                // Carrega Fila
                 this.loadQueue();
                 agentAPI.subscribeToQueue(() => this.loadQueue());
 
@@ -76,22 +65,18 @@ const App = {
             }
         });
 
-        // 2. EVENTO DE ENVIO DE MENSAGEM NO CHAT
         document.getElementById('agent-chat-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
             
-            this.renderMsg(text, 'agent'); // Renderiza visualmente
+            this.renderMsg(text, 'agent');
             input.value = '';
-            await agentAPI.sendMessage(this.activeTicketId, text); // Salva no banco
+            await agentAPI.sendMessage(this.activeTicketId, text);
         });
     },
 
-    // ------------------------------------
-    // CONTROLES DE UI E NAVEGAÇÃO
-    // ------------------------------------
     toggleAuthMode() {
         this.isRegisterMode = !this.isRegisterMode;
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
@@ -116,7 +101,6 @@ const App = {
         });
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
         
-        // Se abriu a tela de equipe, carrega os dados
         if(target === 'team') this.loadTeam();
     },
 
@@ -124,14 +108,10 @@ const App = {
         try {
             await agentAPI.updateRoutingStatus(this.currentUser.id, isActive);
         } catch(e) {
-            console.error(e);
             alert("Erro ao alterar status do orquestrador.");
         }
     },
 
-    // ------------------------------------
-    // LÓGICA DA FILA
-    // ------------------------------------
     async loadQueue() {
         const tickets = await agentAPI.getPendingTickets();
         const tbody = document.getElementById('queue-tbody');
@@ -155,19 +135,14 @@ const App = {
         `).join('');
     },
 
-    // ------------------------------------
-    // LÓGICA DE ATENDIMENTO E CHAT
-    // ------------------------------------
     async pickTicket(id) {
         this.activeTicketId = id;
         this.navigate('chat');
         document.getElementById('menu-chat').classList.remove('hidden-view');
         document.getElementById('chat-history').innerHTML = '';
 
-        // Puxa as infos detalhadas
         const t = await agentAPI.getTicketDetails(id);
         
-        // Preenche Interface
         document.getElementById('chat-header-name').innerText = t.customers.full_name;
         document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
         document.getElementById('crm-name').innerText = t.customers.full_name;
@@ -175,7 +150,6 @@ const App = {
         document.getElementById('crm-tag1').innerText = t.ticket_subjects ? t.ticket_subjects.label : 'Sem assunto';
         document.getElementById('crm-tag2').value = t.tag2_detail || '';
 
-        // Carrega histórico e assina Realtime
         const msgs = await agentAPI.getMessages(id);
         msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
 
@@ -198,20 +172,15 @@ const App = {
 
     async closeTicket() {
         if (!confirm("Tem certeza que deseja finalizar este atendimento?")) return;
-        
         const tag2 = document.getElementById('crm-tag2').value.trim();
-        
         try {
             await agentAPI.closeTicket(this.activeTicketId, tag2);
             alert("Atendimento finalizado com sucesso!");
-            
-            // Limpa o estado
             this.activeTicketId = null;
             document.getElementById('menu-chat').classList.add('hidden-view');
             this.navigate('queue');
         } catch (error) {
             alert("Erro ao fechar o ticket.");
-            console.error(error);
         }
     },
 
@@ -225,14 +194,33 @@ const App = {
         tbody.innerHTML = team.map(member => {
             const isApproved = member.is_approved ? '<span class="text-green-600 font-bold">Aprovado</span>' : '<span class="text-amber-600 font-bold">Pendente</span>';
             
+            // Monta as caixinhas de Skills dinamicamente para os aprovados
+            let skillsHTML = '';
+            if (member.is_approved) {
+                skillsHTML = `<div class="flex flex-col gap-2">`;
+                this.allSubjects.forEach(sub => {
+                    const hasSkill = member.agent_skills.some(skill => skill.subject_id === sub.id);
+                    skillsHTML += `
+                        <label class="flex items-center gap-2 cursor-pointer w-fit">
+                            <input type="checkbox" 
+                                   ${hasSkill ? 'checked' : ''} 
+                                   onchange="agentApp.toggleSkill('${member.id}', '${sub.id}', this.checked)"
+                                   class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer">
+                            <span class="text-[11px] font-bold text-slate-600">${sub.label}</span>
+                        </label>
+                    `;
+                });
+                skillsHTML += `</div>`;
+            } else {
+                skillsHTML = '<span class="text-xs text-slate-400">Aprove o acesso para configurar.</span>';
+            }
+            
             return `
             <tr class="hover:bg-slate-50 transition-colors">
                 <td class="p-5 font-black text-slate-900">${member.full_name}<br><span class="text-[11px] font-bold text-slate-400">${member.email}</span></td>
                 <td class="p-5 text-sm">${isApproved} <br><span class="uppercase text-[10px] font-bold text-slate-500">${member.role}</span></td>
-                <td class="p-5 text-xs text-slate-500">
-                    ${!member.is_approved ? 'Aprove para liberar skills' : 'Skills em desenvolvimento...'}
-                </td>
-                <td class="p-5 text-right">
+                <td class="p-5">${skillsHTML}</td>
+                <td class="p-5 text-right align-top">
                     ${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs">Aprovar</button>` : ''}
                 </td>
             </tr>`;
@@ -243,6 +231,15 @@ const App = {
         if(confirm("Deseja aprovar o acesso deste analista?")) {
             await agentAPI.approveUser(id, 'analista');
             this.loadTeam();
+        }
+    },
+
+    async toggleSkill(agentId, subjectId, isAdding) {
+        try {
+            await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding);
+        } catch (error) {
+            alert("Erro ao salvar a especialidade.");
+            this.loadTeam(); // Recarrega a tabela para reverter o checkbox em caso de erro
         }
     }
 };
