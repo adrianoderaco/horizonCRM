@@ -62,33 +62,66 @@
             <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 z-10">
                 <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">Console Operacional</div>
                 <div class="flex items-center gap-4">
-                    <label class="flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200">
+                    <div id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200">
                         <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
                         <input type="checkbox" id="toggle-routing" class="sr-only peer" onchange="agentApp.toggleRouting(this.checked)">
                         <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 relative"></div>
-                    </label>
+                    </div>
                     <div class="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-bold border"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online</div>
                 </div>
             </header>
 
             <main class="flex-1 overflow-hidden relative">
                 <section id="sec-queue" class="p-8 h-full overflow-y-auto">
-                    <div class="max-w-5xl mx-auto"><h2 class="text-3xl font-black text-slate-900 mb-6">Aguardando Triagem</h2><div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><tbody class="divide-y" id="queue-tbody"></tbody></table></div></div>
+                    <div class="max-w-5xl mx-auto"><h2 class="text-3xl font-black text-slate-900 mb-6 flex justify-between">Aguardando Atendimento <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full flex items-center" id="queue-count">0 tickets</span></h2><div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Protocolo</th><th class="p-5">Cliente</th><th class="p-5">Assunto</th><th class="p-5 text-right">Ação</th></tr></thead><tbody class="divide-y" id="queue-tbody"></tbody></table></div></div>
                 </section>
-                <section id="sec-chat" class="h-full hidden-view flex overflow-hidden">
-                    </section>
-
+                
                 <section id="sec-team" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-5xl mx-auto">
-                        <h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2>
-                        <div class="bg-white rounded-3xl border shadow-sm overflow-hidden">
-                            <table class="w-full text-left">
-                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                    <tr><th class="p-5">Analista</th><th class="p-5">Status / Acesso</th><th class="p-5">Skills (Assuntos)</th><th class="p-5 text-right">Ações</th></tr>
-                                </thead>
-                                <tbody class="divide-y" id="team-tbody">
-                                    </tbody>
-                            </table>
+                    <div class="max-w-5xl mx-auto"><h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2><div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Analista</th><th class="p-5">Status / Acesso</th><th class="p-5">Skills (Assuntos)</th><th class="p-5 text-right">Ações</th></tr></thead><tbody class="divide-y" id="team-tbody"></tbody></table></div></div>
+                </section>
+
+                <section id="sec-chat" class="h-full hidden-view flex overflow-hidden">
+                    <div class="flex-1 flex flex-col bg-white border-r">
+                        <header class="p-4 border-b bg-slate-50 flex justify-between items-center">
+                            <div><h3 class="font-black text-slate-900" id="chat-header-name">Cliente</h3><div class="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">Protocolo: <span id="chat-header-protocol" class="text-blue-600">---</span></div></div>
+                        </header>
+                        <div id="chat-history" class="flex-1 overflow-y-auto p-6 bg-slate-50/50 space-y-4"></div>
+                        <form id="agent-chat-form" class="p-4 bg-white border-t">
+                            <div class="flex gap-2">
+                                <input type="text" id="chat-input" class="flex-1 bg-slate-100 p-3 rounded-xl outline-none font-medium" placeholder="Digite sua resposta..." autocomplete="off">
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-xl font-bold shadow-md">Enviar</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="w-[350px] bg-white overflow-y-auto p-6 flex flex-col gap-5 shrink-0">
+                        <div>
+                            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Dados do Cliente</h4>
+                            <div class="bg-slate-50 p-4 rounded-xl border"><div class="font-black text-slate-900" id="crm-name">...</div><div class="text-xs font-bold text-slate-500 mt-1" id="crm-email">...</div></div>
+                        </div>
+                        <div>
+                            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Assunto / TAG 2</h4>
+                            <div class="bg-blue-50 text-blue-800 text-xs font-bold p-2 mb-3 rounded-lg border border-blue-100" id="crm-tag1">...</div>
+                            <textarea id="crm-tag2" class="w-full bg-slate-50 border p-3 rounded-xl text-sm outline-none resize-none font-medium focus:ring-2 focus:ring-blue-600" rows="3" placeholder="Anotações internas..."></textarea>
+                        </div>
+                        
+                        <div class="border-t pt-5">
+                            <h4 class="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-3">Transferir Chamado</h4>
+                            <select id="transfer-subject" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold text-slate-700 mb-2 outline-none">
+                                <option value="">➜ Para Fila (Assunto)...</option>
+                            </select>
+                            <select id="transfer-agent" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold text-slate-700 mb-3 outline-none">
+                                <option value="">➜ Para Agente Específico...</option>
+                            </select>
+                            <button type="button" onclick="agentApp.transferTicket()" class="w-full bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all">
+                                <span class="material-symbols-outlined text-[18px]">move_up</span> Executar Transferência
+                            </button>
+                        </div>
+
+                        <div class="mt-auto pt-5 border-t">
+                            <button type="button" onclick="agentApp.closeTicket()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all">
+                                <span class="material-symbols-outlined">check_circle</span> Finalizar
+                            </button>
                         </div>
                     </div>
                 </section>

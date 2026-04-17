@@ -9,15 +9,15 @@ const App = {
     isRegisterMode: false,
     currentUser: null,
     allSubjects: [],
+    activeAgents: [],
 
     init() {
         window.agentApp = this; 
 
-        // Escuta quando o Orquestrador captura um ticket para este agente
         window.addEventListener('ticket-assigned', (e) => {
             const ticket = e.detail;
-            console.log("Ticket atribuído via Orquestrador:", ticket.protocol_number);
-            this.pickTicket(ticket.id); // Abre o atendimento automaticamente
+            console.log("Ticket atribuído:", ticket.protocol_number);
+            this.pickTicket(ticket.id);
         });
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -33,7 +33,7 @@ const App = {
                 const name = document.getElementById('reg-name').value;
                 try {
                     await agentAPI.register(name, email, pass);
-                    alert("Cadastro realizado! Aguarde a aprovação do gestor.");
+                    alert("Cadastro realizado! Aguarde aprovação.");
                     this.toggleAuthMode();
                 } catch (err) { alert("Erro ao cadastrar: " + err.message); } 
                 finally { btn.innerHTML = originalText; }
@@ -45,7 +45,7 @@ const App = {
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
                 
                 if (!profile || !profile.is_approved) {
-                    alert("Acesso pendente de aprovação.");
+                    alert("Acesso pendente.");
                     await supabase.auth.signOut();
                     btn.innerHTML = originalText;
                     return;
@@ -55,25 +55,27 @@ const App = {
                 document.getElementById('view-login').classList.add('hidden-view');
                 document.getElementById('view-app').classList.remove('hidden-view');
                 
-                // CONTROLE DE ACESSO: Somente Gestores veem Equipe e o botão do Orquestrador
+                // Pré-carrega dados para dropdowns
+                this.allSubjects = await agentAPI.getAllSubjects();
+                this.activeAgents = await agentAPI.getActiveAgents();
+                
+                // BLOQUEIO EXTREMO: Apenas Gestor vê botão do Orquestrador
                 if (profile.role === 'gestor') {
                     document.getElementById('menu-team').classList.remove('hidden-view');
                     document.getElementById('wrapper-routing').classList.remove('hidden-view');
-                    this.allSubjects = await agentAPI.getAllSubjects();
+                } else {
+                    document.getElementById('wrapper-routing').classList.add('hidden-view');
                 }
                 
-                // Sincroniza o switch do orquestrador
-                const routingToggle = document.getElementById('toggle-routing');
-                if(routingToggle) routingToggle.checked = profile.is_routing_active;
-
-                // Inicializa o Orquestrador (ele fica em standby se is_routing_active for false)
+                document.getElementById('toggle-routing').checked = profile.is_routing_active;
+                
                 Orchestrator.init(profile.id, profile.is_routing_active);
 
                 this.loadQueue();
                 agentAPI.subscribeToQueue(() => this.loadQueue());
 
             } catch (error) { 
-                alert("Erro no login. Verifique as credenciais."); 
+                alert("Erro no login."); 
                 btn.innerHTML = originalText;
             }
         });
@@ -83,7 +85,6 @@ const App = {
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
-            
             this.renderMsg(text, 'agent');
             input.value = '';
             await agentAPI.sendMessage(this.activeTicketId, text);
@@ -92,34 +93,30 @@ const App = {
 
     toggleAuthMode() {
         this.isRegisterMode = !this.isRegisterMode;
-        const regName = document.getElementById('reg-name');
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
         document.getElementById('btn-login').innerHTML = this.isRegisterMode ? 'Criar Conta' : 'Entrar <span class="material-symbols-outlined">login</span>';
-        
-        if (this.isRegisterMode) {
-            regName.classList.remove('hidden-view');
-            regName.required = true;
-        } else {
-            regName.classList.add('hidden-view');
-            regName.required = false;
-        }
+        const regName = document.getElementById('reg-name');
+        if (this.isRegisterMode) { regName.classList.remove('hidden-view'); regName.required = true; } 
+        else { regName.classList.add('hidden-view'); regName.required = false; }
     },
 
     navigate(target) {
-        ['queue', 'chat', 'team'].forEach(s => {
-            const el = document.getElementById(`sec-${s}`);
-            if(el) el.classList.add('hidden-view');
-        });
+        ['queue', 'chat', 'team'].forEach(s => document.getElementById(`sec-${s}`)?.classList.add('hidden-view'));
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
         if(target === 'team') this.loadTeam();
     },
 
     async toggleRouting(isActive) {
+        if (this.currentUser.role !== 'gestor') {
+            alert("Ação não autorizada.");
+            document.getElementById('toggle-routing').checked = !isActive;
+            return;
+        }
         try {
             await agentAPI.updateRoutingStatus(this.currentUser.id, isActive);
             Orchestrator.setStatus(isActive); 
         } catch(e) {
-            alert("Erro ao atualizar orquestrador.");
+            alert("Erro ao alterar status.");
             document.getElementById('toggle-routing').checked = !isActive;
         }
     },
@@ -127,19 +124,24 @@ const App = {
     async loadQueue() {
         const tickets = await agentAPI.getPendingTickets();
         const tbody = document.getElementById('queue-tbody');
+        const countEl = document.getElementById('queue-count');
+        if(countEl) countEl.innerText = `${tickets.length} tickets`;
+
         if (tickets.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300">Fila vazia.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center font-bold text-slate-300">Nenhum ticket pendente.</td></tr>`;
             return;
         }
+
         tbody.innerHTML = tickets.map(t => `
             <tr class="hover:bg-slate-50 transition-colors">
-                <td class="p-5 font-black">HZ-${t.protocol_number}</td>
-                <td class="p-5 font-black">${t.customers.full_name}</td>
-                <td class="p-5 font-bold text-sm">${t.ticket_subjects?.label || '---'}</td>
+                <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} <span class="text-[10px] font-bold uppercase bg-slate-200 text-slate-600 px-2 py-0.5 rounded ml-2">${t.channel}</span></td>
+                <td class="p-5 font-black text-slate-900">${t.customers.full_name} <br><span class="text-[11px] text-slate-400 font-bold">${t.customers.email}</span></td>
+                <td class="p-5 font-bold text-sm text-slate-600">${t.ticket_subjects ? t.ticket_subjects.label : '---'}</td>
                 <td class="p-5 text-right">
-                    <button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-xs font-black">Atender</button>
+                    <button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">Atender</button>
                 </td>
-            </tr>`).join('');
+            </tr>
+        `).join('');
     },
 
     async pickTicket(id) {
@@ -149,18 +151,59 @@ const App = {
         document.getElementById('chat-history').innerHTML = '';
 
         const t = await agentAPI.getTicketDetails(id);
+        
         document.getElementById('chat-header-name').innerText = t.customers.full_name;
         document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
         document.getElementById('crm-name').innerText = t.customers.full_name;
         document.getElementById('crm-email').innerText = t.customers.email;
-        document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto';
+        document.getElementById('crm-tag1').innerText = t.ticket_subjects ? t.ticket_subjects.label : 'Sem assunto';
         document.getElementById('crm-tag2').value = t.tag2_detail || '';
+
+        // Preenche os selects de transferência
+        this.populateTransferDropdowns();
 
         const msgs = await agentAPI.getMessages(id);
         msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
 
         if (this.messageSub) this.messageSub.unsubscribe();
         this.messageSub = agentAPI.subscribeToMessages(id, (msg) => this.renderMsg(msg, 'customer'));
+    },
+
+    populateTransferDropdowns() {
+        const subSelect = document.getElementById('transfer-subject');
+        subSelect.innerHTML = '<option value="">➜ Para Fila (Assunto)...</option>';
+        this.allSubjects.forEach(s => subSelect.innerHTML += `<option value="${s.id}">${s.label}</option>`);
+
+        const agSelect = document.getElementById('transfer-agent');
+        agSelect.innerHTML = '<option value="">➜ Para Agente Específico...</option>';
+        this.activeAgents.forEach(a => {
+            if (a.id !== this.currentUser.id) { // Não lista a si mesmo
+                agSelect.innerHTML += `<option value="${a.id}">${a.full_name}</option>`;
+            }
+        });
+    },
+
+    async transferTicket() {
+        const newSubjectId = document.getElementById('transfer-subject').value;
+        const newAgentId = document.getElementById('transfer-agent').value;
+        const tag2 = document.getElementById('crm-tag2').value.trim();
+
+        if (!newSubjectId && !newAgentId) {
+            alert("Selecione uma Fila ou um Agente para transferir.");
+            return;
+        }
+
+        if (confirm("Deseja realmente transferir este atendimento?")) {
+            try {
+                await agentAPI.transferTicket(this.activeTicketId, newSubjectId, newAgentId, tag2);
+                alert("Ticket transferido com sucesso!");
+                this.activeTicketId = null;
+                document.getElementById('menu-chat').classList.add('hidden-view');
+                this.navigate('queue');
+            } catch (error) {
+                alert("Erro ao transferir ticket.");
+            }
+        }
     },
 
     renderMsg(text, type) {
@@ -171,43 +214,50 @@ const App = {
                 <div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'}">
                     ${text}
                 </div>
-            </div>`;
+            </div>
+        `;
         area.scrollTop = area.scrollHeight;
     },
 
     async closeTicket() {
-        if (!confirm("Encerrar este atendimento?")) return;
+        if (!confirm("Tem certeza que deseja finalizar este atendimento?")) return;
+        const tag2 = document.getElementById('crm-tag2').value.trim();
         try {
-            await agentAPI.closeTicket(this.activeTicketId, document.getElementById('crm-tag2').value);
+            await agentAPI.closeTicket(this.activeTicketId, tag2);
+            alert("Atendimento finalizado com sucesso!");
             this.activeTicketId = null;
             document.getElementById('menu-chat').classList.add('hidden-view');
             this.navigate('queue');
-        } catch (error) { alert("Erro ao fechar."); }
+        } catch (error) { alert("Erro ao fechar o ticket."); }
     },
 
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles();
         const tbody = document.getElementById('team-tbody');
         tbody.innerHTML = team.map(member => {
+            const isApproved = member.is_approved ? '<span class="text-green-600 font-bold">Aprovado</span>' : '<span class="text-amber-600 font-bold">Pendente</span>';
             let skillsHTML = '';
             if (member.is_approved) {
-                skillsHTML = `<div class="flex flex-col gap-1">`;
+                skillsHTML = `<div class="flex flex-col gap-2">`;
                 this.allSubjects.forEach(sub => {
                     const hasSkill = member.agent_skills.some(skill => skill.subject_id === sub.id);
                     skillsHTML += `
-                        <label class="flex items-center gap-2">
-                            <input type="checkbox" ${hasSkill ? 'checked' : ''} onchange="agentApp.toggleSkill('${member.id}', '${sub.id}', this.checked)" class="w-4 h-4">
-                            <span class="text-[10px] font-bold text-slate-600">${sub.label}</span>
-                        </label>`;
+                        <label class="flex items-center gap-2 cursor-pointer w-fit">
+                            <input type="checkbox" ${hasSkill ? 'checked' : ''} onchange="agentApp.toggleSkill('${member.id}', '${sub.id}', this.checked)" class="w-4 h-4 text-blue-600">
+                            <span class="text-[11px] font-bold text-slate-600">${sub.label}</span>
+                        </label>
+                    `;
                 });
                 skillsHTML += `</div>`;
+            } else {
+                skillsHTML = '<span class="text-xs text-slate-400">Aprove o acesso.</span>';
             }
             return `
-            <tr class="hover:bg-slate-50">
-                <td class="p-5 font-black">${member.full_name}</td>
-                <td class="p-5 text-xs font-bold uppercase">${member.role}</td>
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-5 font-black text-slate-900">${member.full_name}<br><span class="text-[11px] font-bold text-slate-400">${member.email}</span></td>
+                <td class="p-5 text-sm">${isApproved} <br><span class="uppercase text-[10px] font-bold text-slate-500">${member.role}</span></td>
                 <td class="p-5">${skillsHTML}</td>
-                <td class="p-5 text-right">
+                <td class="p-5 text-right align-top">
                     ${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs">Aprovar</button>` : ''}
                 </td>
             </tr>`;
@@ -215,12 +265,12 @@ const App = {
     },
 
     async approveMember(id) {
-        if(confirm("Aprovar analista?")) { await agentAPI.approveUser(id, 'analista'); this.loadTeam(); }
+        if(confirm("Deseja aprovar?")) { await agentAPI.approveUser(id, 'analista'); this.loadTeam(); }
     },
 
     async toggleSkill(agentId, subjectId, isAdding) {
         try { await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); } 
-        catch (error) { alert("Erro ao salvar skill."); this.loadTeam(); }
+        catch (error) { alert("Erro ao salvar."); this.loadTeam(); }
     }
 };
 

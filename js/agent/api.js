@@ -2,9 +2,6 @@
 import { supabase } from '../supabase.js';
 
 export const agentAPI = {
-    // ------------------------------------
-    // AUTENTICAÇÃO E PERFIS
-    // ------------------------------------
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -14,23 +11,15 @@ export const agentAPI = {
     async register(name, email, password) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        
         if (data.user) {
             const { error: profileError } = await supabase.from('profiles').insert([{ 
-                id: data.user.id, 
-                full_name: name, 
-                email: email, 
-                is_approved: false,
-                role: 'analista'
+                id: data.user.id, full_name: name, email: email, is_approved: false, role: 'analista'
             }]);
             if (profileError) throw profileError;
         }
         return data;
     },
 
-    // ------------------------------------
-    // FILA E TICKETS
-    // ------------------------------------
     async getPendingTickets() {
         const { data, error } = await supabase
             .from('tickets')
@@ -52,16 +41,36 @@ export const agentAPI = {
     },
 
     async closeTicket(ticketId, tag2Text) {
-        const { error } = await supabase
-            .from('tickets')
-            .update({ status: 'closed', tag2_detail: tag2Text, closed_at: new Date() })
-            .eq('id', ticketId);
+        const { error } = await supabase.from('tickets').update({ status: 'closed', tag2_detail: tag2Text, closed_at: new Date() }).eq('id', ticketId);
         if (error) throw error;
     },
 
-    // ------------------------------------
-    // CHAT (MENSAGENS)
-    // ------------------------------------
+    // --- NOVA FUNÇÃO DE TRANSFERÊNCIA ---
+    async transferTicket(ticketId, newSubjectId, newAgentId, tag2Text) {
+        const updates = { tag2_detail: tag2Text };
+        
+        if (newAgentId) {
+            // Manda para um agente específico (volta o status para open para aparecer na fila dele)
+            updates.agent_id = newAgentId;
+            updates.status = 'open';
+        } else if (newSubjectId) {
+            // Manda para uma Fila/Assunto (limpa o agente para o orquestrador pegar)
+            updates.subject_id = newSubjectId;
+            updates.agent_id = null;
+            updates.status = 'open';
+        }
+
+        const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
+        if (error) throw error;
+    },
+
+    async getActiveAgents() {
+        // Busca todos os agentes aprovados para preencher o dropdown de transferência
+        const { data, error } = await supabase.from('profiles').select('id, full_name').eq('is_approved', true).order('full_name');
+        if (error) throw error;
+        return data;
+    },
+
     async getMessages(ticketId) {
         const { data, error } = await supabase.from('messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
         if (error) throw error;
@@ -73,9 +82,6 @@ export const agentAPI = {
         if (error) throw error;
     },
 
-    // ------------------------------------
-    // GESTÃO DE EQUIPE E ORQUESTRADOR
-    // ------------------------------------
     async getTeamProfiles() {
         const { data, error } = await supabase.from('profiles').select('*, agent_skills(subject_id)').order('created_at', { ascending: true });
         if (error) throw error;
@@ -98,7 +104,6 @@ export const agentAPI = {
         if (error) throw error;
     },
 
-    // Nova função: Liga ou desliga uma Skill (Assunto) para o agente
     async toggleAgentSkill(agentId, subjectId, isAdding) {
         if (isAdding) {
             const { error } = await supabase.from('agent_skills').insert([{ agent_id: agentId, subject_id: subjectId }]);
@@ -109,9 +114,6 @@ export const agentAPI = {
         }
     },
 
-    // ------------------------------------
-    // INSCRIÇÕES REALTIME (SUPABASE)
-    // ------------------------------------
     subscribeToQueue(onUpdateCallback) {
         return supabase.channel('agent-queue').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => onUpdateCallback()).subscribe();
     },
