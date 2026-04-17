@@ -21,32 +21,31 @@
         <div class="flex items-center gap-2 font-bold text-blue-700">
             <span class="material-symbols-outlined">cloud</span> Horizon Support
         </div>
-        <div class="flex items-center border border-gray-200 rounded-lg px-3 py-1">
-            <span class="material-symbols-outlined text-gray-400 text-sm mr-1">language</span>
-            <select id="client-lang" onchange="clientApp.setLang(this.value)" class="bg-transparent text-xs font-bold text-gray-600 outline-none cursor-pointer">
-                <option value="pt">Português</option>
-                <option value="en">English</option>
-                <option value="es">Español</option>
-            </select>
-        </div>
     </header>
 
     <main class="flex-1 flex justify-center items-center p-4 sm:p-8">
         
-        <section id="view-contact" class="max-w-4xl w-full space-y-8">
-            <div class="bg-white rounded-3xl p-12 text-center shadow-sm border border-gray-200">
-                <h2 class="text-4xl font-extrabold tracking-tight mb-4" id="txt-title">Como podemos ajudar?</h2>
-                <p class="text-gray-500 mb-8" id="txt-desc">Descreva seu problema para abrir um chamado direto.</p>
-                <div class="max-w-xl mx-auto flex flex-col gap-4 text-left">
-                    <input id="ticket-subject" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Assunto" type="text" />
-                    <textarea id="ticket-desc" class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none resize-none" rows="4" placeholder="Detalhes do problema..."></textarea>
-                </div>
+        <section id="view-contact" class="max-w-xl w-full space-y-6 bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-200">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-extrabold tracking-tight mb-2">Como podemos ajudar?</h2>
+                <p class="text-gray-500">Identifique-se para iniciar o atendimento.</p>
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <button onclick="clientApp.openChat()" class="bg-white rounded-3xl p-8 text-left shadow-sm border border-gray-200 hover:border-blue-500 transition-all group">
-                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-4"><span class="material-symbols-outlined">forum</span></div>
-                    <h3 class="text-xl font-bold" id="txt-btn-chat">Iniciar Chat ao Vivo</h3>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">E-mail de Cadastro *</label>
+                    <input id="client-email" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="seu@email.com" type="email" required />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Número do Pedido (Opcional)</label>
+                    <input id="order-number" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Ex: 12345" type="text" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Assunto</label>
+                    <input id="ticket-subject" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Ex: Atraso na entrega" type="text" />
+                </div>
+                <button onclick="clientApp.validateAndOpen()" class="w-full bg-blue-600 hover:bg-blue-700 text-white h-14 rounded-xl font-bold transition-all flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">forum</span> Iniciar Atendimento
                 </button>
             </div>
         </section>
@@ -54,21 +53,30 @@
         <section id="view-chat" class="hidden-view w-full max-w-3xl h-[80vh] bg-white rounded-3xl shadow-xl border border-gray-200 flex flex-col overflow-hidden relative">
             <header class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
                 <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center"><span class="material-symbols-outlined text-white">support_agent</span></div>
+                    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm">
+                        <span class="material-symbols-outlined text-white">support_agent</span>
+                    </div>
                     <div>
                         <h1 class="text-lg font-extrabold text-gray-900 leading-none">Suporte Horizon</h1>
-                        <div class="flex items-center gap-1.5 mt-1"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span><span class="text-xs font-bold text-gray-500" id="txt-status">Aguardando Agente...</span></div>
+                        <div class="flex items-center gap-1.5 mt-1">
+                            <span id="status-dot" class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            <span id="txt-status" class="text-xs font-bold text-gray-500">Agente conectado</span>
+                        </div>
                     </div>
                 </div>
             </header>
 
             <div id="client-chat-area" class="flex-1 overflow-y-auto p-6 bg-white space-y-6">
+                <div id="alert-not-found" class="hidden-view bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 text-amber-800 text-sm font-medium">
+                    <span class="material-symbols-outlined text-amber-500">warning</span>
+                    Cliente não localizado em nossa base de dados. O analista poderá solicitar mais informações.
                 </div>
+            </div>
 
             <footer class="p-4 bg-gray-50 border-t border-gray-100 shrink-0">
                 <form id="client-chat-form" class="flex items-end gap-3 bg-white border border-gray-200 rounded-2xl p-2 focus-within:border-blue-500 transition-all">
                     <textarea id="client-msg-input" class="flex-1 bg-transparent border-none outline-none text-sm p-2 resize-none max-h-32 min-h-[44px]" placeholder="Sua mensagem..."></textarea>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-1"><span class="material-symbols-outlined">send</span></button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-1 shadow-sm"><span class="material-symbols-outlined">send</span></button>
                 </form>
             </footer>
         </section>
@@ -80,72 +88,84 @@
         const supabase = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
         const clientApp = {
-            lang: 'pt',
             myTicketId: null,
-            texts: {
-                pt: { title: "Como podemos ajudar?", desc: "Descreva seu problema para abrir um ticket.", btnChat: "Iniciar Chat ao Vivo", status: "Aguardando Agente..." },
-                en: { title: "How can we help?", desc: "Describe your issue to open a direct ticket.", btnChat: "Start Live Chat", status: "Waiting for Agent..." },
-                es: { title: "¿Cómo podemos ayudar?", desc: "Describa su problema para abrir un ticket.", btnChat: "Iniciar Chat en Vivo", status: "Esperando Agente..." }
-            },
+            customerData: null,
 
-            setLang(l) {
-                this.lang = l;
-                document.getElementById('txt-title').innerText = this.texts[l].title;
-                document.getElementById('txt-desc').innerText = this.texts[l].desc;
-                document.getElementById('txt-btn-chat').innerText = this.texts[l].btnChat;
-                document.getElementById('txt-status').innerText = this.texts[l].status;
-            },
+            async validateAndOpen() {
+                const email = document.getElementById('client-email').value.trim();
+                const subject = document.getElementById('ticket-subject').value.trim() || "Chat Iniciado";
+                const order = document.getElementById('order-number').value.trim();
 
-            async openChat() {
-                const subject = document.getElementById('ticket-subject').value || "Sem Assunto";
-                const msg = document.getElementById('ticket-desc').value;
-                if(!msg) return alert(this.texts[this.lang].desc);
-                
-                document.getElementById('view-contact').classList.add('hidden-view');
-                document.getElementById('view-chat').classList.remove('hidden-view');
-                
-                // 1. Renderiza a mensagem localmente
-                this.renderMessage(msg, 'customer');
+                if (!email) return alert("Por favor, informe seu e-mail.");
 
                 try {
-                    // 2. Cria um cliente temporário no banco
-                    const emailTemp = `visitante_${Date.now()}@horizon.com`;
-                    const { data: cust, error: errCust } = await supabase.from('customers').insert([{ full_name: 'Visitante do Site', email: emailTemp }]).select().single();
-                    if(errCust) throw errCust;
+                    // 1. Busca o cliente no Supabase
+                    const { data: customer, error } = await supabase
+                        .from('customers')
+                        .select('*')
+                        .eq('email', email)
+                        .single();
 
-                    // 3. Cria o Ticket na fila
-                    const { data: ticket, error: errTick } = await supabase.from('tickets').insert([{ customer_id: cust.id, subject: subject, channel: 'chat' }]).select().single();
-                    if(errTick) throw errTick;
-                    
+                    this.customerData = customer;
+
+                    // 2. Muda para a tela de chat
+                    document.getElementById('view-contact').classList.add('hidden-view');
+                    document.getElementById('view-chat').classList.remove('hidden-view');
+
+                    // 3. Verifica se localizou
+                    if (!customer) {
+                        document.getElementById('alert-not-found').classList.remove('hidden-view');
+                        // Se não existe, cria um ticket com um customer_id nulo ou cria um registro temporário
+                        // Aqui, por segurança do banco, criaremos o registro temporário
+                        const { data: newCust } = await supabase.from('customers').insert([{ 
+                            full_name: 'Visitante Desconhecido', 
+                            email: email,
+                            tier: 'Não Localizado'
+                        }]).select().single();
+                        this.customerData = newCust;
+                    }
+
+                    // 4. Cria o Ticket
+                    const finalSubject = order ? `${subject} (Pedido: ${order})` : subject;
+                    const { data: ticket } = await supabase
+                        .from('tickets')
+                        .insert([{ 
+                            customer_id: this.customerData.id, 
+                            subject: finalSubject, 
+                            channel: 'chat',
+                            status: 'pending' 
+                        }])
+                        .select().single();
+
                     this.myTicketId = ticket.id;
 
-                    // 4. Salva a primeira mensagem no banco
-                    await supabase.from('messages').insert([{ ticket_id: this.myTicketId, sender_type: 'customer', content: msg }]);
+                    // 5. Mensagem automática de boas-vindas
+                    this.renderMessage(`Solicitação enviada! Aguarde enquanto conectamos você a um analista.`, 'agent');
 
-                    // 5. Começa a "escutar" respostas do agente no banco
-                    supabase.channel(`ticket-${this.myTicketId}`)
-                        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${this.myTicketId}` }, payload => {
-                            if(payload.new.sender_type === 'agent') {
-                                this.renderMessage(payload.new.content, 'agent');
-                            }
-                        }).subscribe();
+                    // 6. Escutar respostas do analista
+                    this.listenMessages();
 
-                } catch (error) {
-                    console.error("Erro ao conectar com Supabase:", error);
-                    alert("Erro de conexão com o servidor.");
+                } catch (err) {
+                    console.error(err);
+                    alert("Erro ao conectar. Tente novamente.");
                 }
+            },
+
+            listenMessages() {
+                supabase.channel(`ticket-${this.myTicketId}`)
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${this.myTicketId}` }, payload => {
+                        if(payload.new.sender_type === 'agent') {
+                            this.renderMessage(payload.new.content, 'agent');
+                        }
+                    }).subscribe();
             },
 
             renderMessage(text, sender) {
                 const area = document.getElementById('client-chat-area');
                 const isCust = sender === 'customer';
-                const badge = (!isCust) ? `<span class="mt-2 text-[9px] opacity-70 flex items-center gap-1 text-gray-500"><span class="material-symbols-outlined text-[11px]">translate</span> Traduzido</span>` : '';
                 const html = `
                     <div class="flex items-start gap-3 max-w-[85%] mt-4 ${isCust ? 'ml-auto flex-row-reverse' : ''}">
-                        <div class="${isCust ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200'} p-4 rounded-2xl text-sm shadow-sm flex flex-col">
-                            <span>${text}</span>
-                            ${badge}
-                        </div>
+                        <div class="${isCust ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200'} p-4 rounded-2xl text-sm shadow-sm whitespace-pre-wrap">${text}</div>
                     </div>
                 `;
                 area.innerHTML += html;
@@ -153,19 +173,20 @@
             }
         };
 
-        // Quando o cliente envia uma nova mensagem no chat
         document.getElementById('client-chat-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('client-msg-input');
             const text = input.value.trim();
             if(!text || !clientApp.myTicketId) return;
             
-            // Mostra na tela
             clientApp.renderMessage(text, 'customer');
             input.value = '';
 
-            // Envia pro Supabase
-            await supabase.from('messages').insert([{ ticket_id: clientApp.myTicketId, sender_type: 'customer', content: text }]);
+            await supabase.from('messages').insert([{ 
+                ticket_id: clientApp.myTicketId, 
+                sender_type: 'customer', 
+                content: text 
+            }]);
         });
     </script>
 </body>
