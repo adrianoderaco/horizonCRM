@@ -9,30 +9,41 @@ export const Orchestrator = {
         this.agentId = agentId;
         this.isRoutingActive = initialStatus;
         
-        // Fica escutando a chegada de novos tickets abertos 24h por dia
-        supabase.channel('orchestrator-channel')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
-                if (this.isRoutingActive) {
-                    await this.evaluateAndClaim(payload.new);
+        console.log("🧠 Orquestrador inicializado. Disponível:", initialStatus);
+
+        // Escuta a tabela de tickets em tempo real
+        supabase.channel('orchestrator-realtime')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets' }, async (payload) => {
+                const newTicket = payload.new;
+                
+                console.log("📩 Novo ticket detetado no Realtime:", newTicket.protocol_number);
+
+                // Só tenta capturar se o Orquestrador estiver LIGADO e o ticket estiver ABERTO
+                if (this.isRoutingActive && newTicket.status === 'open') {
+                    await this.evaluateAndClaim(newTicket);
+                } else {
+                    console.log("⏳ Orquestrador ignorou ticket (Desativado ou Status não é 'open')");
                 }
             }).subscribe();
     },
 
     setStatus(isActive) {
         this.isRoutingActive = isActive;
+        console.log("🔄 Status do Orquestrador alterado para:", isActive);
     },
 
     async evaluateAndClaim(ticket) {
         try {
-            // 1. O Orquestrador verifica se o analista tem a Skill (Assunto) do ticket
+            // 1. Busca as Skills (Habilidades) que este agente possui
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const hasSkill = skills.some(s => s.subject_id === ticket.subject_id);
             
-            if (!hasSkill) return; // Se não tem a skill, ignora silenciosamente
+            console.log(`🔍 Avaliando ticket HZ-${ticket.protocol_number}. Agente possui habilidade?`, hasSkill ? "SIM" : "NÃO");
 
-            // 2. Tenta "puxar" o ticket (A Regra de Ouro)
-            // O ".is('agent_id', null)" garante que se dois analistas tentarem puxar no mesmo milissegundo,
-            // o banco de dados só vai entregar para o primeiro, evitando duplicação!
+            if (!hasSkill) return;
+
+            // 2. Tenta capturar o ticket para este agente
+            // A cláusula .is('agent_id', null) evita que dois agentes capturem o mesmo ticket
             const { data, error } = await supabase.from('tickets')
                 .update({ agent_id: this.agentId, status: 'in_progress' })
                 .eq('id', ticket.id)
@@ -40,12 +51,14 @@ export const Orchestrator = {
                 .select();
 
             if (data && data.length > 0) {
-                // Sucesso! O ticket foi atribuído a este agente.
-                // Dispara um alarme para a tela principal abrir o chat.
+                console.log("✅ TICKET CAPTURADO COM SUCESSO!");
+                // Dispara o evento para o app.js abrir a tela de chat
                 window.dispatchEvent(new CustomEvent('ticket-assigned', { detail: data[0] }));
+            } else {
+                console.log("❌ Falha na captura: Ticket já foi pego por outro agente ou não cumpre os critérios.");
             }
         } catch (err) {
-            console.error("Orquestrador falhou ao avaliar ticket:", err);
+            console.error("💥 Erro crítico no Orquestrador:", err);
         }
     }
 };
