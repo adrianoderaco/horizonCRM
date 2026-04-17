@@ -1,6 +1,7 @@
 // Arquivo: js/agent/app.js
 import { agentAPI } from './api.js';
 import { supabase } from '../supabase.js';
+import { Orchestrator } from './orchestrator.js'; // <-- Importando o Cérebro!
 
 const App = {
     activeTicketId: null,
@@ -11,6 +12,13 @@ const App = {
 
     init() {
         window.agentApp = this; 
+
+        // Escuta o Orquestrador disparar um novo ticket!
+        window.addEventListener('ticket-assigned', (e) => {
+            const ticket = e.detail;
+            alert(`🔥 TICKET ATRIBUÍDO AUTOMATICAMENTE!\nO Orquestrador te enviou o Protocolo: HZ-${ticket.protocol_number}`);
+            this.pickTicket(ticket.id); // Abre o chat sozinho
+        });
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -27,11 +35,8 @@ const App = {
                     await agentAPI.register(name, email, pass);
                     alert("Cadastro realizado com sucesso! Aguarde a aprovação do gestor para fazer login.");
                     this.toggleAuthMode();
-                } catch (err) { 
-                    alert("Erro ao cadastrar: " + err.message); 
-                } finally {
-                    btn.innerHTML = originalText;
-                }
+                } catch (err) { alert("Erro ao cadastrar: " + err.message); } 
+                finally { btn.innerHTML = originalText; }
                 return;
             }
 
@@ -56,6 +61,10 @@ const App = {
                 }
                 
                 document.getElementById('toggle-routing').checked = profile.is_routing_active;
+                
+                // LIGA O ORQUESTRADOR EM SEGUNDO PLANO
+                Orchestrator.init(profile.id, profile.is_routing_active);
+
                 this.loadQueue();
                 agentAPI.subscribeToQueue(() => this.loadQueue());
 
@@ -100,15 +109,17 @@ const App = {
             if(el) el.classList.add('hidden-view');
         });
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
-        
         if(target === 'team') this.loadTeam();
     },
 
     async toggleRouting(isActive) {
         try {
             await agentAPI.updateRoutingStatus(this.currentUser.id, isActive);
+            // Avisa o Orquestrador que mudou o status (almoço/voltou)
+            Orchestrator.setStatus(isActive); 
         } catch(e) {
             alert("Erro ao alterar status do orquestrador.");
+            document.getElementById('toggle-routing').checked = !isActive; // Reverte visual
         }
     },
 
@@ -184,9 +195,6 @@ const App = {
         }
     },
 
-    // ------------------------------------
-    // LÓGICA DA EQUIPE (GESTOR)
-    // ------------------------------------
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles();
         const tbody = document.getElementById('team-tbody');
@@ -194,7 +202,6 @@ const App = {
         tbody.innerHTML = team.map(member => {
             const isApproved = member.is_approved ? '<span class="text-green-600 font-bold">Aprovado</span>' : '<span class="text-amber-600 font-bold">Pendente</span>';
             
-            // Monta as caixinhas de Skills dinamicamente para os aprovados
             let skillsHTML = '';
             if (member.is_approved) {
                 skillsHTML = `<div class="flex flex-col gap-2">`;
@@ -239,7 +246,7 @@ const App = {
             await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding);
         } catch (error) {
             alert("Erro ao salvar a especialidade.");
-            this.loadTeam(); // Recarrega a tabela para reverter o checkbox em caso de erro
+            this.loadTeam(); 
         }
     }
 };
