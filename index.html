@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Horizon Support | Portal do Cliente</title>
+    <title>Horizon Support | Atendimento ao Cliente</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
@@ -17,177 +17,98 @@
 </head>
 <body class="antialiased min-h-screen flex flex-col">
 
-    <header class="w-full bg-white border-b border-gray-200 p-4 flex justify-between items-center shrink-0 shadow-sm">
-        <div class="flex items-center gap-2 font-bold text-blue-700">
-            <span class="material-symbols-outlined">cloud</span> Horizon Support
+    <header class="w-full bg-white border-b border-gray-200 p-4 flex justify-between items-center shrink-0 shadow-sm z-10">
+        <div class="flex items-center gap-2 font-black text-blue-700 text-xl tracking-tight">
+            <span class="material-symbols-outlined">cloud</span> Horizon
         </div>
     </header>
 
-    <main class="flex-1 flex justify-center items-center p-4 sm:p-8">
+    <main class="flex-1 flex justify-center items-center p-4 sm:p-8 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
         
-        <section id="view-contact" class="max-w-xl w-full space-y-6 bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-200">
+        <section id="view-contact" class="max-w-2xl w-full space-y-6 bg-white rounded-3xl p-8 md:p-12 shadow-xl border border-gray-100">
             <div class="text-center mb-8">
-                <h2 class="text-3xl font-extrabold tracking-tight mb-2">Como podemos ajudar?</h2>
-                <p class="text-gray-500">Identifique-se para iniciar o atendimento.</p>
+                <h2 class="text-3xl font-extrabold tracking-tight mb-2 text-slate-900">Como podemos ajudar?</h2>
+                <p class="text-slate-500 font-medium">Preencha os dados abaixo para gerarmos seu protocolo.</p>
             </div>
             
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">E-mail de Cadastro *</label>
-                    <input id="client-email" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="seu@email.com" type="email" required />
+            <form id="ticket-form" class="space-y-5">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Nome Completo *</label>
+                        <input id="client-name" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Seu nome" type="text" required />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">E-mail *</label>
+                        <input id="client-email" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="seu@email.com" type="email" required />
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Número do Pedido (Opcional)</label>
-                    <input id="order-number" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Ex: 12345" type="text" />
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Assunto do Contato *</label>
+                        <select id="ticket-subject" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none font-medium text-slate-700" required>
+                            <option value="">Carregando assuntos...</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Número do Pedido</label>
+                        <input id="client-order" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Opcional" type="text" />
+                    </div>
                 </div>
+
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Assunto</label>
-                    <input id="ticket-subject" class="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Ex: Atraso na entrega" type="text" />
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Descreva o problema *</label>
+                    <textarea id="client-message" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none resize-none" rows="3" placeholder="Detalhes..." required></textarea>
                 </div>
-                <button onclick="clientApp.validateAndOpen()" class="w-full bg-blue-600 hover:bg-blue-700 text-white h-14 rounded-xl font-bold transition-all flex items-center justify-center gap-2">
-                    <span class="material-symbols-outlined">forum</span> Iniciar Atendimento
-                </button>
-            </div>
+
+                <div class="pt-4 flex flex-col sm:flex-row gap-4">
+                    <button type="button" id="btn-chat" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white h-14 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200">
+                        <span class="material-symbols-outlined">forum</span> Iniciar Chat
+                    </button>
+                    <button type="button" id="btn-email" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white h-14 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-200">
+                        <span class="material-symbols-outlined">mail</span> Enviar E-mail
+                    </button>
+                </div>
+            </form>
         </section>
 
-        <section id="view-chat" class="hidden-view w-full max-w-3xl h-[80vh] bg-white rounded-3xl shadow-xl border border-gray-200 flex flex-col overflow-hidden relative">
-            <header class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
+        <section id="view-success" class="hidden-view max-w-md w-full bg-white rounded-3xl p-12 text-center shadow-xl border border-gray-100">
+            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span class="material-symbols-outlined text-4xl">check_circle</span>
+            </div>
+            <h2 class="text-3xl font-extrabold tracking-tight mb-2">Ticket Aberto!</h2>
+            <p class="text-slate-500 mb-6">Sua solicitação foi registrada com sucesso. Acompanhe pelo protocolo:</p>
+            <div class="bg-slate-100 p-4 rounded-xl font-black text-2xl tracking-widest text-slate-800 mb-6" id="success-protocol">HZ-0000</div>
+            <button onclick="location.reload()" class="font-bold text-blue-600 hover:underline">Voltar ao início</button>
+        </section>
+
+        <section id="view-chat" class="hidden-view w-full max-w-3xl h-[85vh] bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden relative">
+            <header class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                 <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm">
+                    <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-md">
                         <span class="material-symbols-outlined text-white">support_agent</span>
                     </div>
                     <div>
-                        <h1 class="text-lg font-extrabold text-gray-900 leading-none">Suporte Horizon</h1>
-                        <div class="flex items-center gap-1.5 mt-1">
-                            <span id="status-dot" class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                            <span id="txt-status" class="text-xs font-bold text-gray-500">Agente conectado</span>
+                        <h1 class="text-lg font-extrabold text-slate-900 leading-none">Suporte Horizon</h1>
+                        <div class="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">
+                            Protocolo: <span id="chat-protocol" class="text-blue-600">---</span>
                         </div>
                     </div>
                 </div>
             </header>
 
-            <div id="client-chat-area" class="flex-1 overflow-y-auto p-6 bg-white space-y-6">
-                <div id="alert-not-found" class="hidden-view bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 text-amber-800 text-sm font-medium">
-                    <span class="material-symbols-outlined text-amber-500">warning</span>
-                    Cliente não localizado em nossa base de dados. O analista poderá solicitar mais informações.
+            <div id="chat-area" class="flex-1 overflow-y-auto p-6 bg-white space-y-6">
                 </div>
-            </div>
 
-            <footer class="p-4 bg-gray-50 border-t border-gray-100 shrink-0">
-                <form id="client-chat-form" class="flex items-end gap-3 bg-white border border-gray-200 rounded-2xl p-2 focus-within:border-blue-500 transition-all">
-                    <textarea id="client-msg-input" class="flex-1 bg-transparent border-none outline-none text-sm p-2 resize-none max-h-32 min-h-[44px]" placeholder="Sua mensagem..."></textarea>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-1 shadow-sm"><span class="material-symbols-outlined">send</span></button>
+            <footer class="p-4 bg-slate-50 border-t border-slate-100 shrink-0">
+                <form id="chat-form" class="flex items-end gap-3 bg-white border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-600 transition-all">
+                    <textarea id="chat-input" class="flex-1 bg-transparent border-none outline-none text-sm p-3 resize-none max-h-32 min-h-[44px]" placeholder="Digite sua mensagem..."></textarea>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md"><span class="material-symbols-outlined">send</span></button>
                 </form>
             </footer>
         </section>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/config.js"></script>
-    <script>
-        const supabase = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-
-        const clientApp = {
-            myTicketId: null,
-            customerData: null,
-
-            async validateAndOpen() {
-                const email = document.getElementById('client-email').value.trim();
-                const subject = document.getElementById('ticket-subject').value.trim() || "Chat Iniciado";
-                const order = document.getElementById('order-number').value.trim();
-
-                if (!email) return alert("Por favor, informe seu e-mail.");
-
-                try {
-                    // 1. Busca o cliente no Supabase
-                    const { data: customer, error } = await supabase
-                        .from('customers')
-                        .select('*')
-                        .eq('email', email)
-                        .single();
-
-                    this.customerData = customer;
-
-                    // 2. Muda para a tela de chat
-                    document.getElementById('view-contact').classList.add('hidden-view');
-                    document.getElementById('view-chat').classList.remove('hidden-view');
-
-                    // 3. Verifica se localizou
-                    if (!customer) {
-                        document.getElementById('alert-not-found').classList.remove('hidden-view');
-                        // Se não existe, cria um ticket com um customer_id nulo ou cria um registro temporário
-                        // Aqui, por segurança do banco, criaremos o registro temporário
-                        const { data: newCust } = await supabase.from('customers').insert([{ 
-                            full_name: 'Visitante Desconhecido', 
-                            email: email,
-                            tier: 'Não Localizado'
-                        }]).select().single();
-                        this.customerData = newCust;
-                    }
-
-                    // 4. Cria o Ticket
-                    const finalSubject = order ? `${subject} (Pedido: ${order})` : subject;
-                    const { data: ticket } = await supabase
-                        .from('tickets')
-                        .insert([{ 
-                            customer_id: this.customerData.id, 
-                            subject: finalSubject, 
-                            channel: 'chat',
-                            status: 'pending' 
-                        }])
-                        .select().single();
-
-                    this.myTicketId = ticket.id;
-
-                    // 5. Mensagem automática de boas-vindas
-                    this.renderMessage(`Solicitação enviada! Aguarde enquanto conectamos você a um analista.`, 'agent');
-
-                    // 6. Escutar respostas do analista
-                    this.listenMessages();
-
-                } catch (err) {
-                    console.error(err);
-                    alert("Erro ao conectar. Tente novamente.");
-                }
-            },
-
-            listenMessages() {
-                supabase.channel(`ticket-${this.myTicketId}`)
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${this.myTicketId}` }, payload => {
-                        if(payload.new.sender_type === 'agent') {
-                            this.renderMessage(payload.new.content, 'agent');
-                        }
-                    }).subscribe();
-            },
-
-            renderMessage(text, sender) {
-                const area = document.getElementById('client-chat-area');
-                const isCust = sender === 'customer';
-                const html = `
-                    <div class="flex items-start gap-3 max-w-[85%] mt-4 ${isCust ? 'ml-auto flex-row-reverse' : ''}">
-                        <div class="${isCust ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200'} p-4 rounded-2xl text-sm shadow-sm whitespace-pre-wrap">${text}</div>
-                    </div>
-                `;
-                area.innerHTML += html;
-                area.scrollTop = area.scrollHeight;
-            }
-        };
-
-        document.getElementById('client-chat-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('client-msg-input');
-            const text = input.value.trim();
-            if(!text || !clientApp.myTicketId) return;
-            
-            clientApp.renderMessage(text, 'customer');
-            input.value = '';
-
-            await supabase.from('messages').insert([{ 
-                ticket_id: clientApp.myTicketId, 
-                sender_type: 'customer', 
-                content: text 
-            }]);
-        });
-    </script>
+    <script type="module" src="js/client/app.js"></script>
 </body>
 </html>
