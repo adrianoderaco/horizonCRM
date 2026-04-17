@@ -11,73 +11,172 @@
         body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; color: #191c1d; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
         .hidden-view { display: none !important; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="antialiased overflow-hidden">
 
     <section id="view-login" class="min-h-screen w-full flex flex-row">
-        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16">
-            <h1 class="text-3xl font-extrabold text-white mb-4">Horizon CRM</h1>
-            <h2 class="text-5xl font-extrabold text-white leading-tight">Painel Operacional Realtime</h2>
+        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16 text-white">
+            <div class="z-10">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-3xl">cloud</span>
+                    </div>
+                    <h1 class="text-3xl font-extrabold tracking-tight">Horizon CRM</h1>
+                </div>
+                <h2 class="text-6xl font-black leading-tight">Painel Operacional<br/><span class="text-blue-500">Realtime</span></h2>
+                <p class="mt-6 text-slate-400 text-lg max-w-md">Gerencie atendimentos, analise dados de clientes e resolva tickets em um só lugar.</p>
+            </div>
+            <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
         </div>
-        <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white">
+
+        <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white z-10 shadow-2xl">
             <div class="w-full max-w-md space-y-8">
-                <header><h3 class="text-3xl font-extrabold mb-2">Bem-vindo</h3><p class="text-gray-500">Conectando ao Supabase...</p></header>
+                <header>
+                    <h3 class="text-3xl font-extrabold text-slate-900 mb-2">Bem-vindo</h3>
+                    <p class="text-slate-500 font-medium">Acesse sua conta para iniciar o turno.</p>
+                </header>
                 <form id="login-form" class="space-y-6">
-                    <input type="email" class="w-full p-4 bg-gray-50 border rounded-xl" placeholder="email@horizon.com" required/>
-                    <input type="password" class="w-full p-4 bg-gray-50 border rounded-xl" placeholder="••••••••" required/>
-                    <button type="submit" class="w-full py-4 bg-blue-600 text-white font-bold rounded-xl">Entrar no Console</button>
+                    <div class="space-y-4">
+                        <input type="email" id="login-email" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 transition-all font-medium" placeholder="agente@horizon.com" required/>
+                        <input type="password" id="login-pass" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 transition-all font-medium" placeholder="••••••••" required/>
+                    </div>
+                    <button type="submit" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all flex justify-center items-center gap-2">
+                        Entrar no Console <span class="material-symbols-outlined text-lg">login</span>
+                    </button>
                 </form>
             </div>
         </div>
     </section>
 
     <div id="view-app" class="hidden-view h-screen flex">
-        <aside class="w-64 bg-slate-50 border-r border-gray-200 flex flex-col">
-            <div class="p-6 font-black text-blue-700 text-2xl">Horizon</div>
-            <nav class="flex-1 px-4 space-y-2">
-                <button onclick="app.navigate('dashboard')" class="nav-btn w-full text-left p-3 font-bold text-gray-600 hover:bg-gray-200 rounded-lg">Dashboard</button>
-                <button onclick="app.navigate('queue')" class="nav-btn w-full text-left p-3 font-bold text-gray-600 hover:bg-gray-200 rounded-lg">Fila de Tickets</button>
-                <button onclick="app.navigate('chat')" class="nav-btn w-full text-left p-3 font-bold text-gray-600 hover:bg-gray-200 rounded-lg hidden-view" id="menu-chat">Chat Ativo</button>
+        
+        <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col text-slate-300 z-20">
+            <div class="p-6">
+                <div class="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                    <span class="material-symbols-outlined text-blue-400">cloud</span> Horizon
+                </div>
+            </div>
+            
+            <nav class="flex-1 px-4 space-y-2 mt-4">
+                <button onclick="app.navigate('queue')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all hover:bg-slate-800">
+                    <span class="material-symbols-outlined">confirmation_number</span> Fila de Tickets
+                </button>
+                <button id="menu-chat" onclick="app.navigate('chat')" class="nav-btn hidden-view w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all bg-blue-600 text-white">
+                    <span class="material-symbols-outlined">forum</span> Chat Ativo
+                </button>
+                <div class="h-px bg-slate-800 my-4 mx-2"></div>
+                <button onclick="app.navigate('dashboard')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all hover:bg-slate-800 opacity-50">
+                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                </button>
             </nav>
-            <div class="p-4 border-t"><button onclick="location.reload()" class="w-full text-red-600 font-bold p-3">Sair</button></div>
+
+            <div class="p-4 border-t border-slate-800">
+                <button onclick="location.reload()" class="w-full py-3 flex items-center gap-3 px-4 text-red-400 font-bold text-sm hover:bg-red-500/10 rounded-xl transition-colors">
+                    <span class="material-symbols-outlined">logout</span> Sair
+                </button>
+            </div>
         </aside>
 
-        <div class="flex-1 flex flex-col h-screen overflow-hidden">
-            <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0">
-                <div class="font-bold text-sm">Console de Operações</div>
+        <div class="flex-1 flex flex-col h-screen overflow-hidden bg-white relative">
+            <header class="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0 z-10">
+                <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">Console Operacional</div>
                 <div class="flex items-center gap-4">
-                    <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs">AG</div>
+                    <div class="flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-100 text-green-700 rounded-full text-xs font-bold">
+                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online
+                    </div>
+                    <div class="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs">AG</div>
                 </div>
             </header>
-            <main class="flex-1 overflow-y-auto">
-                <section id="sec-dashboard" class="p-8"><h2 class="text-3xl font-bold mb-8">Dashboard Conectado</h2></section>
+
+            <main class="flex-1 overflow-hidden relative bg-slate-50">
                 
-                <section id="sec-queue" class="p-8 hidden-view">
-                    <h2 class="text-3xl font-bold mb-6">Fila de Tickets (Ao Vivo)</h2>
-                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                        <table class="w-full text-left">
-                            <tbody class="divide-y" id="queue-tbody">
-                                </tbody>
-                        </table>
+                <section id="sec-queue" class="p-8 h-full overflow-y-auto">
+                    <div class="max-w-5xl mx-auto">
+                        <h2 class="text-3xl font-black text-slate-900 mb-6">Aguardando Atendimento</h2>
+                        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                            <table class="w-full text-left">
+                                <thead class="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <tr>
+                                        <th class="p-5">Cliente</th>
+                                        <th class="p-5">Assunto / Detalhes</th>
+                                        <th class="p-5 text-right">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100" id="queue-tbody">
+                                    </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
-                <section id="sec-chat" class="p-6 h-full hidden-view">
-                    <div class="grid grid-cols-12 gap-6 h-full">
-                        <div class="col-span-4 bg-white rounded-xl p-6 border h-fit">
-                            <h3 class="font-bold mb-2" id="chat-name">Nome</h3>
-                            <p class="text-xs text-gray-400" id="chat-subj">Assunto</p>
-                        </div>
-                        <div class="col-span-8 bg-white rounded-xl border flex flex-col h-[calc(100vh-160px)]">
-                            <div class="flex-1 p-6 overflow-y-auto" id="chat-history"></div>
-                            <form id="agent-chat-form" class="p-4 border-t flex gap-2">
-                                <input type="text" id="chat-input" class="w-full bg-gray-50 p-3 rounded-lg text-sm outline-none" placeholder="Digite sua resposta..." autocomplete="off">
-                                <button type="submit" class="bg-blue-600 text-white px-6 rounded-lg font-bold">Enviar</button>
+                <section id="sec-chat" class="h-full hidden-view flex overflow-hidden">
+                    
+                    <div class="flex-1 flex flex-col bg-white border-r border-slate-200">
+                        <div id="chat-history" class="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/30">
+                            </div>
+                        <div class="p-4 bg-white border-t border-slate-100">
+                            <form id="agent-chat-form" class="flex gap-2 bg-slate-100 p-2 rounded-2xl focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-600 transition-all border border-transparent focus-within:border-transparent">
+                                <input type="text" id="chat-input" class="flex-1 bg-transparent border-none outline-none p-3 text-sm font-medium" placeholder="Digite sua resposta oficial..." autocomplete="off">
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-xl font-bold transition-all shadow-md shadow-blue-100">Enviar</button>
                             </form>
                         </div>
                     </div>
+
+                    <div class="w-[400px] bg-white overflow-y-auto p-6 space-y-6 shrink-0">
+                        <h3 class="font-black text-[10px] uppercase text-slate-400 tracking-[0.2em]">Perfil do Cliente</h3>
+                        
+                        <div class="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center text-xl font-black shadow-lg shadow-blue-100" id="crm-avatar">?</div>
+                                <div class="overflow-hidden">
+                                    <h4 class="font-black text-slate-900 text-lg truncate" id="crm-name">Carregando...</h4>
+                                    <p class="text-xs font-bold text-slate-400 truncate" id="crm-email">---</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center py-3 border-t border-slate-200/50">
+                                <span class="text-[10px] font-black text-slate-400 uppercase">Nível da Conta</span>
+                                <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-black uppercase" id="crm-tier">Standard</span>
+                            </div>
+                        </div>
+
+                        <div id="crm-order-alert" class="hidden-view bg-amber-50 border border-amber-200 p-5 rounded-3xl">
+                            <div class="flex items-center gap-2 mb-2 text-amber-600">
+                                <span class="material-symbols-outlined text-lg font-black">shopping_cart</span>
+                                <h5 class="text-[10px] font-black uppercase tracking-widest">Pedido Informado</h5>
+                            </div>
+                            <p class="text-slate-900 font-black text-lg" id="crm-order-number">#0000</p>
+                            <div class="mt-3 flex items-center gap-2 text-amber-700 bg-amber-100/50 p-2 rounded-lg border border-amber-200/50">
+                                <span class="material-symbols-outlined text-sm">info</span>
+                                <p class="text-[10px] font-bold">Pedido não localizado no banco.</p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4 pt-4 border-t border-slate-100">
+                            <h3 class="font-black text-[10px] uppercase text-slate-400 tracking-[0.2em]">Últimas Compras</h3>
+                            <div class="bg-white rounded-2xl border-2 border-dashed border-slate-100 p-8 text-center flex flex-col items-center">
+                                <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                                    <span class="material-symbols-outlined text-slate-300">inventory_2</span>
+                                </div>
+                                <p class="text-[11px] font-bold text-slate-400 leading-relaxed">Nenhuma compra recente<br/>registrada neste CPF/E-mail.</p>
+                            </div>
+                        </div>
+                    </div>
                 </section>
+
+                <section id="sec-dashboard" class="p-8 hidden-view">
+                    <h2 class="text-3xl font-black text-slate-900 mb-6">Métricas de Atendimento</h2>
+                    <div class="grid grid-cols-3 gap-6">
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200">
+                            <p class="text-xs font-bold text-slate-400 uppercase">Resolvidos</p>
+                            <p class="text-4xl font-black mt-2">0</p>
+                        </div>
+                    </div>
+                </section>
+
             </main>
         </div>
     </div>
@@ -89,11 +188,12 @@
 
         const app = {
             activeTicketId: null,
-            messageSubscription: null,
+            sub: null,
 
             init() {
                 document.getElementById('login-form').onsubmit = (e) => {
                     e.preventDefault();
+                    // Simulação simples de login
                     document.getElementById('view-login').classList.add('hidden-view');
                     document.getElementById('view-app').classList.remove('hidden-view');
                     this.navigate('queue');
@@ -106,77 +206,91 @@
                     const input = document.getElementById('chat-input');
                     const text = input.value.trim();
                     if(!text || !this.activeTicketId) return;
-
-                    // Envia pro Supabase
                     await supabase.from('messages').insert([{ ticket_id: this.activeTicketId, sender_type: 'agent', content: text }]);
                     input.value = '';
                 };
             },
 
             navigate(target) {
-                ['dashboard', 'queue', 'chat'].forEach(s => document.getElementById(`sec-${s}`).classList.add('hidden-view'));
+                const views = ['queue', 'chat', 'dashboard'];
+                views.forEach(v => document.getElementById(`sec-${v}`).classList.add('hidden-view'));
                 document.getElementById(`sec-${target}`).classList.remove('hidden-view');
             },
 
-            // Puxa a fila atual do Supabase
             async loadQueue() {
-                const { data, error } = await supabase.from('tickets').select('*, customers(full_name, email)').eq('status', 'pending').order('created_at', { ascending: false });
-                
-                if (data) {
-                    const tbody = document.getElementById('queue-tbody');
-                    tbody.innerHTML = data.map(t => `
-                        <tr class="hover:bg-gray-50">
-                            <td class="p-5 font-bold">${t.customers.full_name} <span class="block text-xs font-normal text-gray-400">${t.customers.email}</span></td>
-                            <td class="p-5 text-sm">${t.subject}</td>
-                            <td class="p-5 text-right"><button onclick="app.pickTicket('${t.id}', '${t.customers.full_name}', '${t.subject}')" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">Atender</button></td>
-                        </tr>
-                    `).join('');
-                }
+                const { data } = await supabase.from('tickets').select('*, customers(*)').eq('status', 'pending').order('created_at', { ascending: false });
+                const tbody = document.getElementById('queue-tbody');
+                tbody.innerHTML = data?.map(t => `
+                    <tr class="hover:bg-slate-50 transition-colors group">
+                        <td class="p-5">
+                            <div class="font-black text-slate-900">${t.customers.full_name}</div>
+                            <div class="text-[11px] font-bold text-slate-400">${t.customers.email}</div>
+                        </td>
+                        <td class="p-5">
+                            <p class="text-sm font-bold text-slate-600">${t.subject}</p>
+                        </td>
+                        <td class="p-5 text-right">
+                            <button onclick="app.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">Atender</button>
+                        </td>
+                    </tr>
+                `).join('') || `<tr><td colspan="3" class="p-10 text-center font-bold text-slate-300">Nenhum ticket na fila.</td></tr>`;
             },
 
-            // Escuta novos tickets em tempo real
             listenQueue() {
-                supabase.channel('public:tickets')
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets' }, payload => {
-                        this.loadQueue(); // Atualiza a tabela quando um ticket novo cai
-                    }).subscribe();
+                supabase.channel('public:tickets').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => this.loadQueue()).subscribe();
             },
 
-            async pickTicket(ticketId, name, subject) {
-                this.activeTicketId = ticketId;
-                document.getElementById('chat-name').innerText = name;
-                document.getElementById('chat-subj').innerText = subject;
+            async pickTicket(id) {
+                this.activeTicketId = id;
+                this.navigate('chat');
                 document.getElementById('menu-chat').classList.remove('hidden-view');
                 document.getElementById('chat-history').innerHTML = '';
-                this.navigate('chat');
 
-                // Carrega o histórico de mensagens desse ticket
-                const { data: msgs } = await supabase.from('messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
-                if(msgs) msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
+                // 1. Puxa dados do ticket e cliente
+                const { data: t } = await supabase.from('tickets').select('*, customers(*)').eq('id', id).single();
+                
+                // 2. Preenche o CRM
+                document.getElementById('crm-name').innerText = t.customers.full_name;
+                document.getElementById('crm-email').innerText = t.customers.email;
+                document.getElementById('crm-tier').innerText = t.customers.tier || 'Standard';
+                document.getElementById('crm-avatar').innerText = t.customers.full_name.charAt(0);
 
-                // Se já tinha uma inscrição ativa em outro ticket, cancela ela
-                if(this.messageSubscription) supabase.removeChannel(this.messageSubscription);
+                // 3. Extrai número do pedido do assunto (Formato: "Assunto (Pedido: 123)")
+                const orderMatch = t.subject.match(/\(Pedido: (.*?)\)/);
+                if (orderMatch) {
+                    document.getElementById('crm-order-alert').classList.remove('hidden-view');
+                    document.getElementById('crm-order-number').innerText = `#${orderMatch[1]}`;
+                } else {
+                    document.getElementById('crm-order-alert').classList.add('hidden-view');
+                }
 
-                // Escuta novas mensagens DESTE ticket
-                this.messageSubscription = supabase.channel(`ticket-${ticketId}`)
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
-                        this.renderMsg(payload.new.content, payload.new.sender_type);
+                // 4. Busca histórico de mensagens
+                const { data: msgs } = await supabase.from('messages').select('*').eq('ticket_id', id).order('created_at', { ascending: true });
+                msgs?.forEach(m => this.renderMsg(m.content, m.sender_type));
+
+                // 5. Inicia escuta Realtime
+                if(this.sub) supabase.removeChannel(this.sub);
+                this.sub = supabase.channel(`ticket-${id}`)
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${id}` }, p => {
+                        this.renderMsg(p.new.content, p.new.sender_type);
                     }).subscribe();
             },
 
             renderMsg(text, type) {
                 const isAgent = type === 'agent';
                 const area = document.getElementById('chat-history');
-                area.innerHTML += `
-                    <div class="mb-4 ${isAgent ? 'text-right' : ''}">
-                        <div class="inline-block p-3 rounded-xl text-sm ${isAgent ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'} shadow-sm text-left">
+                const html = `
+                    <div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full">
+                        <div class="max-w-[75%] p-4 rounded-3xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'}">
                             ${text}
                         </div>
                     </div>
                 `;
+                area.innerHTML += html;
                 area.scrollTop = area.scrollHeight;
             }
         };
+
         app.init();
     </script>
 </body>
