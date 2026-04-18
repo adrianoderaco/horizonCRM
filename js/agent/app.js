@@ -34,7 +34,10 @@ const App = {
 
         window.addEventListener('ticket-assigned', async (e) => { 
             await this.loadQueue(); 
-            this.pickTicket(e.detail.id); 
+            // UX FIX: Só abre forçado se a tela do agente estiver vazia. Se não, apenas cria a bolha.
+            if (!this.activeTicketId) {
+                this.pickTicket(e.detail.id); 
+            }
         });
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -87,7 +90,7 @@ const App = {
                     
                     const toggleRouteBtn = document.getElementById('toggle-routing');
                     if (toggleRouteBtn) {
-                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active === true;
+                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active;
                     }
                     this.renderDashboard(); 
                 }
@@ -103,6 +106,7 @@ const App = {
 
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
+                    // Se o agente está online e o queue mudou, o orquestrador tenta puxar mais se tiver espaço
                     if (this.currentUser && this.currentUser.status === 'online') {
                         Orchestrator.findAndClaimNext();
                     }
@@ -119,7 +123,7 @@ const App = {
                     Orchestrator.updateSettings(newCfg);
                     if (profile.role === 'gestor') {
                         const tg = document.getElementById('toggle-routing');
-                        if (tg) tg.checked = newCfg.is_orchestrator_active === true;
+                        if (tg) tg.checked = newCfg.is_orchestrator_active;
                     }
                 });
 
@@ -255,7 +259,7 @@ const App = {
             console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`);
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
+            alert("Erro ao alterar Orquestrador Global.");
         }
     },
 
@@ -344,7 +348,6 @@ const App = {
 
     async updateAgentLimits(agentId, maxChats, maxEmails) {
         try {
-            // Corrige se a string vier vazia (usuário apagou o campo)
             let c = maxChats === "" ? null : maxChats;
             let e = maxEmails === "" ? null : maxEmails;
             await agentAPI.updateAgentLimits(agentId, c, e);
@@ -443,7 +446,7 @@ const App = {
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
             await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente', '', 'SLA de Inatividade atingido');
+            await agentAPI.closeTicket(ticket.id, 'SLA', 'SLA', 'Encerrado Automaticamente por Inatividade');
             
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
@@ -662,8 +665,6 @@ const App = {
             tbody.innerHTML = tickets.map(t => {
                 const inProg = t.status === 'in_progress';
                 const isMine = t.agent_id === this.currentUser.id;
-                
-                // CORREÇÃO: "Na Fila (Aguardando)" para casos sem dono
                 const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
 
                 let statusHtml = `
@@ -815,7 +816,7 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
-            // TAGS: Preenche os dropdowns de Tag 1
+            // TAGS
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
@@ -1030,8 +1031,10 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
+    // AQUI ESTÁ O MODAL DE HISTÓRICO COM AS TAGS E NOTAS
     async viewPastChat(ticketId, protocolNumber) {
         try {
+            const ticket = await agentAPI.getTicketDetails(ticketId); 
             const msgs = await agentAPI.getMessages(ticketId); 
             const modal = document.getElementById('modal-history'); 
             const content = document.getElementById('history-chat-content');
@@ -1039,18 +1042,43 @@ const App = {
             document.getElementById('modal-history-protocol').innerText = `Protocolo HZ-${protocolNumber}`; 
             modal.classList.remove('hidden-view');
             
+            let html = `
+            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 relative z-20">
+                <h4 class="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">summarize</span> Resumo do Atendimento</h4>
+                <div class="grid grid-cols-2 gap-4 text-xs mb-3">
+                    <div>
+                        <div class="font-bold text-blue-900 mb-1">Motivo (Tag 1):</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não informado'}</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-blue-900 mb-1">Submotivo (Tag 2):</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não informado'}</div>
+                    </div>
+                </div>
+                <div class="text-xs">
+                    <div class="font-bold text-blue-900 mb-1">Observações do Analista:</div>
+                    <div class="text-blue-800 italic bg-white/60 border border-blue-100 p-3 rounded-lg">${ticket.agent_notes || 'Nenhuma observação registrada.'}</div>
+                </div>
+            </div>
+            <div class="h-px bg-slate-200 mb-4"></div>
+            `;
+            
             if(msgs.length === 0) { 
-                content.innerHTML = '<div class="text-center text-slate-400 font-bold">Não existem mensagens registradas neste protocolo.</div>'; 
-                return; 
+                html += '<div class="text-center text-slate-400 font-bold">Não existem mensagens registradas neste protocolo.</div>'; 
+            } else {
+                html += msgs.map(m => `
+                <div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full mb-4">
+                    <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
+                        ${m.content}
+                    </div>
+                </div>`).join('');
             }
             
-            content.innerHTML = msgs.map(m => `
-            <div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full">
-                <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
-                    ${m.content}
-                </div>
-            </div>`).join('');
-        } catch (e) { alert("Erro ao tentar abrir a conversa."); }
+            content.innerHTML = html;
+        } catch (e) { 
+            console.error(e);
+            alert("Erro ao tentar abrir a conversa."); 
+        }
     },
 
     showNewOrderForm() { 
@@ -1173,9 +1201,6 @@ const App = {
         }).join('');
     },
 
-    // ==========================================
-    // GESTÃO DE EQUIPE E CHAT INTERNO (GESTOR)
-    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 
