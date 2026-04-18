@@ -101,8 +101,16 @@ const App = {
 
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
+                    
+                    if (this.currentUser && this.currentUser.status === 'online') {
+                        Orchestrator.findAndClaimNext();
+                    }
+
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
                         this.renderDashboard();
+                    }
+                    if (document.getElementById('sec-team') && !document.getElementById('sec-team').classList.contains('hidden-view')) {
+                        this.loadTeam();
                     }
                 });
 
@@ -115,12 +123,10 @@ const App = {
                     }
                 });
 
-                // ATUALIZAÇÃO EM TEMPO REAL DA TELA DA EQUIPE PARA O GESTOR
                 agentAPI.subscribeToProfiles(() => {
                     if (!document.getElementById('sec-team').classList.contains('hidden-view')) {
                         this.loadTeam();
                     }
-                    this.loadQueue();
                 });
 
                 agentAPI.subscribeToMyProfile(this.currentUser.id, (newProfile) => {
@@ -143,10 +149,18 @@ const App = {
                     }
                 });
 
-                agentAPI.subscribeToInternalMessages(this.currentUser.id, (msg) => {
+                // ATUALIZADO: Escuta Chat Interno e prepara o botão com o nome do remetente
+                agentAPI.subscribeToInternalMessages(this.currentUser.id, async (msg) => {
                     if (document.getElementById('modal-internal-chat').classList.contains('hidden-view') || this.internalChatTarget !== msg.sender_id) {
                         const alertBtn = document.getElementById('btn-internal-alert');
-                        if (alertBtn) alertBtn.classList.remove('hidden-view');
+                        if (alertBtn) {
+                            alertBtn.classList.remove('hidden-view');
+                            try {
+                                // Busca quem mandou a mensagem para abrir a janela certa
+                                const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).single();
+                                alertBtn.onclick = () => agentApp.openInternalChat(msg.sender_id, sender?.full_name || 'Equipe');
+                            } catch(e) { console.error(e); }
+                        }
                     } else {
                         this.renderInternalMsg(msg, false);
                     }
@@ -192,7 +206,6 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 input.value = ''; 
                 
-                // NOVO: Resposta de e-mail encerra o ticket imediatamente
                 await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido (Aguardando cliente)');
                 
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
@@ -300,6 +313,7 @@ const App = {
                 await agentAPI.releaseMyTickets(this.currentUser.id);
                 Orchestrator.setStatus(false);
                 alert(`Status alterado para ${newStatus.toUpperCase()}. Seus atendimentos retornaram para a fila.`);
+                
                 this.activeTicketId = null;
                 document.getElementById('menu-chat').classList.add('hidden-view');
                 this.navigate('queue');
@@ -777,7 +791,7 @@ const App = {
             const hist = await agentAPI.getCustomerHistoryByEmail(email); 
             const container = document.getElementById('history-list');
             if(hist.length === 0) { 
-                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento.</div>'; 
+                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; 
                 return; 
             }
             container.innerHTML = hist.map(h => `<div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300 relative z-20"><div><div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div><div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'S/ Assunto'}</div><div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`).join('');
@@ -799,7 +813,7 @@ const App = {
             }
             
             content.innerHTML = msgs.map(m => `<div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${m.content}</div></div>`).join('');
-        } catch (e) { alert("Erro."); }
+        } catch (e) { alert("Erro ao carregar conversa."); }
     },
 
     showNewOrderForm() { 
@@ -885,9 +899,6 @@ const App = {
         }).join('');
     },
 
-    // ==========================================
-    // CHAT INTERNO (GESTOR <-> AGENTE) E EQUIPE
-    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 
@@ -910,16 +921,42 @@ const App = {
             let statusBadge = member.status === 'online' ? '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold text-[10px]">ONLINE</span>' : member.status === 'pausa' ? '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold text-[10px]">EM PAUSA</span>' : member.status === 'backoffice' ? '<span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold text-[10px]">BACKOFFICE</span>' : '<span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold text-[10px]">OFFLINE</span>';
             const timeHtml = `<div class="mb-2">${statusBadge}</div><div class="text-[10px] text-slate-500 font-bold space-y-0.5"><div><span class="text-green-600">Online:</span> ${fmtTime(onlineSecs)}</div><div><span class="text-amber-600">Pausa:</span> ${fmtTime(pausaSecs)}</div><div><span class="text-purple-600">Backoffice:</span> ${fmtTime(backSecs)}</div></div>`;
             
+            const activeCount = this.activeTickets.filter(t => t.agent_id === member.id && t.status === 'in_progress').length;
+            const ticketsBadge = `<div class="mt-2 bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded w-max border border-blue-100 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">headset_mic</span> ${activeCount} em curso</div>`;
+
             let skillsHTML = '';
             if (member.is_approved) {
-                skillsHTML = `<div class="flex flex-col gap-1"><div class="flex gap-4 mb-2 border-b pb-2 border-slate-100"><label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" ${member.can_web ? 'checked' : ''} onchange="agentApp.toggleChannel('${member.id}', 'web', this.checked)" class="w-3 h-3 text-blue-600"><span class="text-[10px] font-black text-slate-600">WEB (Chat)</span></label><label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" ${member.can_email ? 'checked' : ''} onchange="agentApp.toggleChannel('${member.id}', 'email', this.checked)" class="w-3 h-3 text-blue-600"><span class="text-[10px] font-black text-slate-600">E-MAIL</span></label></div>`;
-                this.allSubjects.forEach(sub => { const hasSkill = member.agent_skills.some(skill => skill.subject_id === sub.id); skillsHTML += `<label class="flex items-center gap-2 cursor-pointer w-fit"><input type="checkbox" ${hasSkill ? 'checked' : ''} onchange="agentApp.toggleSkill('${member.id}', '${sub.id}', this.checked)" class="w-4 h-4 text-blue-600"><span class="text-[10px] font-bold text-slate-500">${sub.label}</span></label>`; }); skillsHTML += `</div>`;
+                let skillsBadges = '';
+                let availableOptions = '<option value="" disabled selected>+ Adicionar Assunto...</option>';
+                
+                this.allSubjects.forEach(sub => {
+                    const hasSkill = member.agent_skills.some(skill => skill.subject_id === sub.id);
+                    if (hasSkill) {
+                        skillsBadges += `<span class="bg-slate-100 border border-slate-200 text-slate-600 text-[10px] px-2 py-1 rounded flex items-center gap-1 font-bold">${sub.label} <button onclick="agentApp.toggleSkill('${member.id}', '${sub.id}', false)" class="hover:text-red-500 transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button></span>`;
+                    } else {
+                        availableOptions += `<option value="${sub.id}">${sub.label}</option>`;
+                    }
+                });
+
+                skillsHTML = `
+                <div class="flex flex-col gap-2">
+                    <div class="flex gap-4 border-b pb-2 border-slate-100">
+                        <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" ${member.can_web ? 'checked' : ''} onchange="agentApp.toggleChannel('${member.id}', 'web', this.checked)" class="w-3 h-3 text-blue-600"><span class="text-[10px] font-black text-slate-600">WEB (Chat)</span></label>
+                        <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" ${member.can_email ? 'checked' : ''} onchange="agentApp.toggleChannel('${member.id}', 'email', this.checked)" class="w-3 h-3 text-blue-600"><span class="text-[10px] font-black text-slate-600">E-MAIL</span></label>
+                    </div>
+                    <div class="flex flex-wrap gap-1 min-h-[24px]">
+                        ${skillsBadges || '<span class="text-[10px] text-slate-400 font-bold italic">Nenhum assunto</span>'}
+                    </div>
+                    <select onchange="if(this.value) { agentApp.toggleSkill('${member.id}', this.value, true); this.value=''; }" class="bg-slate-50 border border-slate-200 text-slate-600 text-[10px] font-bold rounded p-1.5 outline-none w-full cursor-pointer hover:bg-slate-100 transition-colors">
+                        ${availableOptions}
+                    </select>
+                </div>`;
             }
 
             const selStatus = `<select onchange="agentApp.forceAgentStatus('${member.id}', this.value)" class="text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full relative z-30 mb-2"><option value="online" ${member.status === 'online' ? 'selected' : ''}>Forçar Online</option><option value="pausa" ${member.status === 'pausa' ? 'selected' : ''}>Forçar Pausa</option><option value="backoffice" ${member.status === 'backoffice' ? 'selected' : ''}>Forçar Backoffice</option><option value="offline" ${member.status === 'offline' ? 'selected' : ''}>Forçar Offline</option></select>`;
             const chatBtn = member.id !== this.currentUser.id ? `<button onclick="agentApp.openInternalChat('${member.id}', '${member.full_name}')" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all flex items-center justify-center w-full gap-1"><span class="material-symbols-outlined text-[12px]">forum</span> Falar c/ Agente</button>` : '';
 
-            return `<tr class="relative z-20 hover:bg-slate-50 transition-colors"><td class="p-5 font-black text-slate-900">${member.full_name}<div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">${member.role}</div></td><td class="p-5">${timeHtml}</td><td class="p-5">${skillsHTML}</td><td class="p-5 text-right w-36">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs mb-2">Aprovar</button>` : selStatus}${chatBtn}</td></tr>`;
+            return `<tr class="relative z-20 hover:bg-slate-50 transition-colors"><td class="p-5 font-black text-slate-900">${member.full_name}<div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">${member.role}</div>${ticketsBadge}</td><td class="p-5">${timeHtml}</td><td class="p-5 w-[250px]">${skillsHTML}</td><td class="p-5 text-right w-36">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs mb-2">Aprovar</button>` : selStatus}${chatBtn}</td></tr>`;
         }).join('');
     },
 
@@ -953,9 +990,34 @@ const App = {
         content.scrollTop = content.scrollHeight;
     },
 
-    async approveMember(id) { if(confirm("Aprovar?")) { await agentAPI.approveUser(id, 'analista'); this.loadTeam(); } },
-    async toggleChannel(agentId, channel, isEnabled) { try { await agentAPI.toggleChannel(agentId, channel, isEnabled); } catch (e) { this.loadTeam(); } },
-    async toggleSkill(agentId, subjectId, isAdding) { try { await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); } catch (e) { this.loadTeam(); } }
+    async approveMember(id) { 
+        if(confirm("Aprovar?")) { 
+            await agentAPI.approveUser(id, 'analista'); 
+            this.loadTeam(); 
+        } 
+    },
+    
+    async toggleChannel(agentId, channel, isEnabled) { 
+        try { 
+            await agentAPI.toggleChannel(agentId, channel, isEnabled);
+            if (!isEnabled) {
+                await agentAPI.releaseTicketsByChannel(agentId, channel);
+            }
+            this.loadTeam(); 
+        } catch (e) { 
+            console.error(e);
+            this.loadTeam(); 
+        } 
+    },
+    
+    async toggleSkill(agentId, subjectId, isAdding) { 
+        try { 
+            await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); 
+            this.loadTeam(); 
+        } catch (e) { 
+            this.loadTeam(); 
+        } 
+    }
 };
 
 App.init();
