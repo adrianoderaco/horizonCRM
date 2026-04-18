@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Horizon CRM - Dashboard Gestor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <style>
+        body { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    </style>
+</head>
+<body class="bg-slate-50 p-4 sm:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="flex justify-between items-center mb-10">
+            <div>
+                <h1 class="text-3xl font-black text-slate-900">Dashboard Executivo</h1>
+                <p class="text-slate-500 font-medium">Monitoramento em tempo real da operação.</p>
+            </div>
+            <button onclick="location.href='agente.html'" class="bg-white hover:bg-slate-100 border border-slate-200 px-6 py-3 rounded-xl font-bold text-sm shadow-sm transition-colors flex items-center gap-2">
+                <span class="material-symbols-outlined text-[18px]">arrow_back</span> Voltar ao Console
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-10">
+            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                <div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total de Tickets</div>
+                <div class="text-4xl font-black text-slate-900" id="stat-total">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                <div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div>
+                <div class="text-4xl font-black text-blue-600" id="stat-open">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                <div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div>
+                <div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div>
+            </div>
+            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                <div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Total Vendas</div>
+                <div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center">
+                <h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3>
+                <div class="relative w-full max-w-[300px] aspect-square">
+                    <canvas id="chartStatus"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col">
+                <h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Performance por Analista (NPS)</h3>
+                <div id="analyst-ranking" class="space-y-4 overflow-y-auto flex-1 pr-2">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/agent/dashboard.js"></script>
+</body>
+</html>
