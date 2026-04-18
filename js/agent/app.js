@@ -87,7 +87,7 @@ const App = {
                     
                     const toggleRouteBtn = document.getElementById('toggle-routing');
                     if (toggleRouteBtn) {
-                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active;
+                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active === true;
                     }
                     this.renderDashboard(); 
                 }
@@ -119,7 +119,7 @@ const App = {
                     Orchestrator.updateSettings(newCfg);
                     if (profile.role === 'gestor') {
                         const tg = document.getElementById('toggle-routing');
-                        if (tg) tg.checked = newCfg.is_orchestrator_active;
+                        if (tg) tg.checked = newCfg.is_orchestrator_active === true;
                     }
                 });
 
@@ -183,7 +183,7 @@ const App = {
             try { 
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 this.updateLocalBubble();
-                Orchestrator.findAndClaimNext(); // Libera espaço no orquestrador
+                Orchestrator.findAndClaimNext(); 
             } catch(err) { 
                 alert("Erro ao enviar mensagem."); 
             }
@@ -344,7 +344,10 @@ const App = {
 
     async updateAgentLimits(agentId, maxChats, maxEmails) {
         try {
-            await agentAPI.updateAgentLimits(agentId, maxChats, maxEmails);
+            // Corrige se a string vier vazia (usuário apagou o campo)
+            let c = maxChats === "" ? null : maxChats;
+            let e = maxEmails === "" ? null : maxEmails;
+            await agentAPI.updateAgentLimits(agentId, c, e);
         } catch (e) {
             alert("Erro ao atualizar limites do agente.");
         }
@@ -434,12 +437,13 @@ const App = {
 
     async executeAutoClose(ticket) {
         try {
+            console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
             let msg = this.systemSettings.closure_macro;
             msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
             await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente', '', 'SLA de Inatividade');
+            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente', '', 'SLA de Inatividade atingido');
             
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
@@ -449,7 +453,7 @@ const App = {
             }
             this.loadQueue();
         } catch(e) { 
-            console.error("Falha macro:", e); 
+            console.error("Falha na macro de encerramento:", e); 
         } finally { 
             this.closingTickets.delete(ticket.id); 
         }
@@ -658,7 +662,9 @@ const App = {
             tbody.innerHTML = tickets.map(t => {
                 const inProg = t.status === 'in_progress';
                 const isMine = t.agent_id === this.currentUser.id;
-                const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Fila';
+                
+                // CORREÇÃO: "Na Fila (Aguardando)" para casos sem dono
+                const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
 
                 let statusHtml = `
                 <div class="flex flex-col gap-1 items-start">
@@ -670,7 +676,6 @@ const App = {
                     ? `<span class="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">mail</span> E-MAIL</span>` 
                     : `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">forum</span> CHAT</span>`;
 
-                // AQUI ESTÁ A CORREÇÃO DO "NA FILA (AGUARDANDO)"
                 let agentDisplay = `
                 <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px] relative z-30">
                     ${!t.agent_id ? '<option value="" selected>Na Fila (Aguardando)</option>' : '<option value="">Devolver para Fila</option>'}
@@ -810,6 +815,7 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
+            // TAGS: Preenche os dropdowns de Tag 1
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();

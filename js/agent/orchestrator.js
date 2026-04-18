@@ -39,8 +39,17 @@ export const Orchestrator = {
     },
 
     updateSettings(newSettings) {
-        this.systemSettings = newSettings;
-        this.isSystemActive = newSettings.is_orchestrator_active || false;
+        const wasActive = this.isSystemActive;
+        this.systemSettings = newSettings || {};
+        this.isSystemActive = this.systemSettings.is_orchestrator_active === true;
+        
+        console.log(`[Orquestrador] Settings atualizados. Global Ativo: ${this.isSystemActive}`);
+        
+        // Se acabou de ligar o global, varre a fila imediatamente
+        if (!wasActive && this.isSystemActive && this.isRoutingActive) {
+            console.log("[Orquestrador] Global ligado. Buscando casos na fila...");
+            this.findAndClaimNext();
+        }
     },
 
     async findAndClaimNext() {
@@ -64,8 +73,8 @@ export const Orchestrator = {
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 
-            const maxChats = profile.max_chats || 3;
-            const maxEmails = profile.max_emails || 5;
+            const maxChats = profile.max_chats !== null ? profile.max_chats : 3;
+            const maxEmails = profile.max_emails !== null ? profile.max_emails : 5;
 
             const canTakeChat = profile?.can_web && (myWaitingChats < maxChats);
             const canTakeEmail = profile?.can_email && (myWaitingEmails < maxEmails);
@@ -121,8 +130,8 @@ export const Orchestrator = {
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
             
-            const maxChats = profile.max_chats || 3;
-            const maxEmails = profile.max_emails || 5;
+            const maxChats = profile.max_chats !== null ? profile.max_chats : 3;
+            const maxEmails = profile.max_emails !== null ? profile.max_emails : 5;
 
             if (ticket.channel === 'web' && myWaitingChats >= maxChats) {
                 console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Limite de Chat Atingido.`);
@@ -149,6 +158,9 @@ export const Orchestrator = {
             if (data && data.length > 0) {
                 console.log(`[Orquestrador] 🚀 SUCESSO! Ticket HZ-${ticket.protocol_number} atribuído ao agente.`);
                 window.dispatchEvent(new CustomEvent('ticket-assigned', { detail: data[0] }));
+                
+                // Recursão rápida para puxar mais se houver limite sobrando
+                this.findAndClaimNext();
             }
         } catch (err) { console.error("Falha ao avaliar/capturar:", err); }
     }

@@ -26,17 +26,25 @@
             </div>
             <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
         </div>
+        
         <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white z-10 shadow-2xl overflow-y-auto">
             <div class="w-full max-w-md space-y-8">
-                <header><h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3><p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais.</p></header>
+                <header>
+                    <h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3>
+                    <p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais.</p>
+                </header>
                 <form id="login-form" class="space-y-6">
                     <div class="space-y-4">
                         <input type="text" id="reg-name" class="hidden-view w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Nome Completo" />
                         <input type="email" id="login-email" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="agente@horizon.com" required/>
                         <input type="password" id="login-pass" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="••••••••" required/>
                     </div>
-                    <button type="submit" id="btn-login" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2">Entrar <span class="material-symbols-outlined">login</span></button>
-                    <div class="text-center mt-4"><button type="button" onclick="agentApp.toggleAuthMode()" id="btn-toggle-auth" class="text-sm font-bold text-slate-500 hover:text-blue-600">Não tem conta? Solicitar Acesso</button></div>
+                    <button type="submit" id="btn-login" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2">
+                        Entrar <span class="material-symbols-outlined">login</span>
+                    </button>
+                    <div class="text-center mt-4">
+                        <button type="button" onclick="agentApp.toggleAuthMode()" id="btn-toggle-auth" class="text-sm font-bold text-slate-500 hover:text-blue-600">Não tem conta? Solicitar Acesso</button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -46,20 +54,23 @@
         <div id="sidebar-root" class="h-full shrink-0 z-20 relative bg-slate-900"></div>
 
         <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
+            
             <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 z-10 gap-4 relative">
                 <div class="text-sm font-bold text-slate-400 uppercase tracking-widest shrink-0">Console</div>
                 <div id="bubble-container" class="flex items-center gap-2 overflow-x-auto flex-1 px-4 py-1" style="scrollbar-width: none;"></div>
                 
                 <div class="flex items-center gap-4 shrink-0">
-                    <button id="btn-internal-alert" onclick="agentApp.openInternalChat()" class="hidden-view bg-red-100 text-red-600 px-3 py-1.5 rounded-full flex items-center gap-1 font-bold text-xs animate-bounce" title="Nova Mensagem Interna"><span class="material-symbols-outlined text-[16px]">forum</span> Chat</button>
-                    
+                    <button id="btn-internal-alert" onclick="agentApp.openInternalChat(this.dataset.senderId, this.dataset.senderName)" class="hidden-view bg-red-100 text-red-600 px-3 py-1.5 rounded-full flex items-center gap-1 font-bold text-xs animate-bounce" title="Nova Mensagem Interna">
+                        <span class="material-symbols-outlined text-[16px]">forum</span> Chat
+                    </button>
+
                     <button id="btn-settings" onclick="agentApp.navigate('settings')" class="hidden-view bg-slate-800 text-white px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-xs transition-colors hover:bg-slate-700" title="Configurações e Tags">
                         <span class="material-symbols-outlined text-[16px]">settings</span> Configurações Gerais
                     </button>
                     
                     <label id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200" title="Orquestrador Global">
                         <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
-                        <input type="checkbox" id="toggle-routing" class="sr-only peer">
+                        <input type="checkbox" id="toggle-routing" onchange="agentApp.toggleGlobalOrchestrator(this.checked)" class="sr-only peer">
                         <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 relative"></div>
                     </label>
                     
@@ -75,17 +86,29 @@
             <main class="flex-1 overflow-hidden relative z-10">
                 <section id="sec-queue" class="p-8 h-full overflow-y-auto">
                     <div class="max-w-6xl mx-auto h-full flex flex-col">
-                        <h2 class="text-3xl font-black text-slate-900 mb-6 flex justify-between items-center">Monitor de Atendimentos <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full flex items-center" id="queue-count">0 tickets ativos</span></h2>
+                        <h2 class="text-3xl font-black text-slate-900 mb-6 flex justify-between items-center">
+                            Monitor de Atendimentos 
+                            <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full flex items-center" id="queue-count">0 tickets ativos</span>
+                        </h2>
                         
                         <div id="queue-gestor-view" class="bg-white rounded-3xl border shadow-sm overflow-hidden hidden-view">
                             <table class="w-full text-left">
-                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Protocolo</th><th class="p-5">Cliente / Assunto</th><th class="p-5">Status / Tempo</th><th class="p-5 text-right">Ação</th></tr></thead>
+                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <tr>
+                                        <th class="p-5">Protocolo</th>
+                                        <th class="p-5">Cliente / Assunto</th>
+                                        <th class="p-5">Status / Tempo</th>
+                                        <th class="p-5 text-right">Ação</th>
+                                    </tr>
+                                </thead>
                                 <tbody class="divide-y" id="queue-tbody"></tbody>
                             </table>
                         </div>
 
                         <div id="queue-agent-view" class="flex-1 flex flex-col items-center justify-center text-center space-y-4 hidden-view">
-                            <div class="w-24 h-24 bg-blue-50 text-blue-300 rounded-full flex items-center justify-center"><span class="material-symbols-outlined text-5xl">support_agent</span></div>
+                            <div class="w-24 h-24 bg-blue-50 text-blue-300 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-5xl">support_agent</span>
+                            </div>
                             <h3 class="text-2xl font-black text-slate-900">Aguardando Atribuição</h3>
                             <p class="text-slate-500 font-medium max-w-md">O Orquestrador enviará novos chamados automaticamente.<br>Fique atento às bolhas no cabeçalho.</p>
                         </div>
@@ -96,7 +119,17 @@
                     <div class="max-w-6xl mx-auto">
                         <h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2>
                         <div class="bg-white rounded-3xl border shadow-sm overflow-hidden">
-                            <table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5 w-1/4">Analista</th><th class="p-5 w-1/4">Status e Ponto (Hoje)</th><th class="p-5 w-2/4">Canais e Skills</th><th class="p-5 text-right w-32">Ações</th></tr></thead><tbody class="divide-y" id="team-tbody"></tbody></table>
+                            <table class="w-full text-left">
+                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <tr>
+                                        <th class="p-5 w-1/4">Analista</th>
+                                        <th class="p-5 w-1/4">Status e Ponto (Hoje)</th>
+                                        <th class="p-5 w-2/4">Canais e Skills</th>
+                                        <th class="p-5 text-right w-32">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y" id="team-tbody"></tbody>
+                            </table>
                         </div>
                     </div>
                 </section>
@@ -104,8 +137,36 @@
                 <section id="sec-dashboard" class="p-8 h-full overflow-y-auto hidden-view">
                     <div class="max-w-6xl mx-auto space-y-8">
                         <h2 class="text-3xl font-black text-slate-900">Dashboard Executivo</h2>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6"><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total</div><div class="text-4xl font-black text-slate-900" id="stat-total">0</div></div><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div><div class="text-4xl font-black text-blue-600" id="stat-open">0</div></div><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div><div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div></div><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Vendas</div><div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div></div></div>
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center"><h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3><div class="relative w-full max-w-[300px] aspect-square"><canvas id="chartStatus"></canvas></div></div><div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col"><h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Ranking de Analistas (NPS)</h3><div id="analyst-ranking" class="space-y-4 overflow-y-auto flex-1 pr-2"></div></div></div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                                <div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total</div>
+                                <div class="text-4xl font-black text-slate-900" id="stat-total">0</div>
+                            </div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                                <div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div>
+                                <div class="text-4xl font-black text-blue-600" id="stat-open">0</div>
+                            </div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                                <div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div>
+                                <div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div>
+                            </div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
+                                <div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Vendas</div>
+                                <div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center">
+                                <h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3>
+                                <div class="relative w-full max-w-[300px] aspect-square"><canvas id="chartStatus"></canvas></div>
+                            </div>
+                            <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col">
+                                <h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Ranking de Analistas (NPS)</h3>
+                                <div id="analyst-ranking" class="space-y-4 overflow-y-auto flex-1 pr-2"></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -119,15 +180,22 @@
                                 <div><label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite CHAT (Minutos)</label><input type="number" id="cfg-chat-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1"></div>
                                 <div><label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite E-MAIL (Horas)</label><input type="number" id="cfg-email-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1"></div>
                             </div>
+                            
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem (Macro) de Encerramento Automático</label>
-                                <div class="flex gap-2 mb-3"><button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button><button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button></div>
+                                <div class="flex gap-2 mb-3">
+                                    <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
+                                    <button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
+                                </div>
                                 <textarea id="cfg-macro" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium resize-y h-48 leading-relaxed"></textarea>
                             </div>
+                            
                             <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8"><span class="material-symbols-outlined">save</span> Salvar Configurações Gerais</button>
                             
                             <div class="border-t pt-8 mt-8">
-                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)</h3>
+                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)
+                                </h3>
                                 <div class="flex gap-2 mb-6">
                                     <input type="text" id="new-tag1-input" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Novo Motivo Principal (Ex: Financeiro, Dúvidas...)">
                                     <button onclick="agentApp.addTag1()" class="bg-slate-800 text-white px-8 rounded-xl font-bold hover:bg-slate-900 transition-colors shadow-md">Adicionar Motivo</button>
@@ -142,8 +210,16 @@
                 <section id="sec-chat" class="h-full hidden-view flex overflow-hidden">
                     <div class="flex-1 flex flex-col bg-white border-r relative z-10">
                         <header class="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0 relative z-20">
-                            <div><h3 class="font-black text-slate-900 flex items-center gap-2" id="chat-header-name">Cliente</h3><div class="flex items-center gap-3 mt-1"><span class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded" id="chat-header-protocol">---</span><span class="text-[10px] font-black text-slate-500 bg-slate-200 px-2 py-0.5 rounded flex items-center gap-1" id="chat-header-channel"></span><span class="text-xs font-bold text-slate-500 truncate max-w-[200px]" id="chat-header-subject">• Assunto</span></div></div>
+                            <div>
+                                <h3 class="font-black text-slate-900 flex items-center gap-2" id="chat-header-name">Cliente</h3>
+                                <div class="flex items-center gap-3 mt-1">
+                                    <span class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">tag</span> <span id="chat-header-protocol">---</span></span>
+                                    <span class="text-[10px] font-black text-slate-500 bg-slate-200 px-2 py-0.5 rounded flex items-center gap-1" id="chat-header-channel"></span>
+                                    <span class="text-xs font-bold text-slate-500 truncate max-w-[200px]" id="chat-header-subject">• Assunto</span>
+                                </div>
+                            </div>
                         </header>
+
                         <div id="chat-mode-container" class="flex-1 flex flex-col overflow-hidden hidden-view">
                             <div id="chat-history" class="flex-1 overflow-y-auto p-6 space-y-4 relative z-10"></div>
                             <form id="agent-chat-form" class="p-4 bg-white border-t shrink-0 flex items-center gap-3 relative z-20">
@@ -154,6 +230,7 @@
                                 <button type="submit" id="btn-send-chat" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors flex items-center justify-center">Enviar</button>
                             </form>
                         </div>
+
                         <div id="email-mode-container" class="flex-1 flex flex-col overflow-hidden bg-slate-100 hidden-view">
                             <div class="flex-1 overflow-y-auto p-6 space-y-6 relative z-10" id="email-thread"></div>
                             <form id="agent-email-form" class="p-6 bg-white border-t shrink-0 relative z-20 flex flex-col gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
@@ -163,6 +240,7 @@
                             </form>
                         </div>
                     </div>
+
                     <div class="w-[380px] bg-white border-l overflow-y-auto flex flex-col shrink-0 relative z-20">
                         <div class="flex border-b text-[10px] font-black uppercase tracking-widest text-slate-400 shrink-0 sticky top-0 bg-white z-10"><button onclick="agentApp.switchTab('crm-info')" id="tab-info" class="flex-1 p-4 border-b-2 border-blue-600 text-blue-600 transition-colors">Dados</button><button onclick="agentApp.switchTab('crm-history')" id="tab-history" class="flex-1 p-4 border-b-2 border-transparent hover:bg-slate-50 transition-colors">Histórico</button><button onclick="agentApp.switchTab('crm-orders')" id="tab-orders" class="flex-1 p-4 border-b-2 border-transparent hover:bg-slate-50 transition-colors">Pedidos</button></div>
                         <div class="p-6 flex-1 flex flex-col">

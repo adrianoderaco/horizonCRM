@@ -173,10 +173,14 @@ export const agentAPI = {
 
     async updateAgentLimits(agentId, maxChats, maxEmails) {
         const updates = {};
-        if (maxChats !== null) updates.max_chats = parseInt(maxChats);
-        if (maxEmails !== null) updates.max_emails = parseInt(maxEmails);
-        const { error } = await supabase.from('profiles').update(updates).eq('id', agentId);
-        if (error) throw error;
+        if (maxChats !== null && maxChats !== undefined) updates.max_chats = parseInt(maxChats);
+        if (maxEmails !== null && maxEmails !== undefined) updates.max_emails = parseInt(maxEmails);
+        
+        // Só tenta salvar se tiver algo pra salvar
+        if (Object.keys(updates).length > 0) {
+            const { error } = await supabase.from('profiles').update(updates).eq('id', agentId);
+            if (error) throw error;
+        }
     },
 
     async getAllSubjects() {
@@ -237,11 +241,19 @@ export const agentAPI = {
         }
     },
 
+    // FUNÇÃO BLINDADA COM FILTRO JAVASCRIPT EM VEZ DE .OR POSTGRES
     async getInternalMessages(user1, user2) {
         if (!user1 || !user2) return []; 
-        const { data, error } = await supabase.from('internal_messages').select('*').in('sender_id', [user1, user2]).in('receiver_id', [user1, user2]).order('created_at', { ascending: true });
+        const { data, error } = await supabase.from('internal_messages')
+            .select('*')
+            .or(`sender_id.eq.${user1},receiver_id.eq.${user1}`);
+            
         if (error) throw error;
-        return data;
+        
+        return data.filter(m => 
+            (m.sender_id === user1 && m.receiver_id === user2) || 
+            (m.sender_id === user2 && m.receiver_id === user1)
+        ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     },
 
     async sendInternalMessage(senderId, receiverId, content) {
