@@ -1,7 +1,6 @@
 import { supabase } from '../supabase.js';
 
 export const agentAPI = {
-    // 1. AUTENTICAÇÃO E STATUS DE AGENTE
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -37,7 +36,6 @@ export const agentAPI = {
         if (err2) throw err2;
     },
 
-    // 2. GESTÃO DE FILA E TICKETS
     async getPendingTickets() {
         const { data, error } = await supabase.from('tickets')
             .select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, customers (full_name, email), ticket_subjects (label)`)
@@ -103,7 +101,6 @@ export const agentAPI = {
         return data;
     },
 
-    // 3. MENSAGENS E UPLOAD (CHAT/EMAIL)
     async getMessages(ticketId) {
         const { data, error } = await supabase.from('messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
         if (error) throw error;
@@ -133,7 +130,6 @@ export const agentAPI = {
         if (error) throw error;
     },
     
-    // 4. CONFIGURAÇÕES GLOBAIS
     async getSystemSettings() {
         const { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single();
         if (error) throw error;
@@ -145,7 +141,6 @@ export const agentAPI = {
         if (error) throw error;
     },
     
-    // 5. CRM E HISTÓRICO
     async getCustomerHistoryByEmail(email) {
         const { data, error } = await supabase.from('tickets').select(`*, customers!inner(email), ticket_subjects(label)`).eq('customers.email', email).order('created_at', { ascending: false });
         if (error) throw error;
@@ -163,7 +158,6 @@ export const agentAPI = {
         if (error) throw error;
     },
 
-    // 6. GESTÃO DE EQUIPE E LIMITES E SKILLS
     async getTeamProfiles() {
         const { data, error } = await supabase.from('profiles').select('*, agent_skills(subject_id)').order('created_at', { ascending: true });
         if (error) throw error;
@@ -185,6 +179,9 @@ export const agentAPI = {
         if (error) throw error;
     },
 
+    // ===================================
+    // FUNÇÕES DE TAGS (MOTIVOS E SUBMOTIVOS)
+    // ===================================
     async getAllSubjects() {
         const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
         if (error) throw error;
@@ -212,8 +209,18 @@ export const agentAPI = {
         if (error) throw error;
     },
 
+    async toggleSubsubject(id, isActive) {
+        const { error } = await supabase.from('ticket_subsubjects').update({ is_active: isActive }).eq('id', id);
+        if (error) throw error;
+    },
+
     async approveUser(userId, role) {
         const { error } = await supabase.from('profiles').update({ is_approved: true, role: role }).eq('id', userId);
+        if (error) throw error;
+    },
+
+    async updateRoutingStatus(userId, isActive) {
+        const { error } = await supabase.from('profiles').update({ is_routing_active: isActive }).eq('id', userId);
         if (error) throw error;
     },
 
@@ -233,7 +240,6 @@ export const agentAPI = {
         }
     },
 
-    // CHAT INTERNO
     async getInternalMessages(user1, user2) {
         if (!user1 || !user2) return []; 
         const { data, error } = await supabase.from('internal_messages').select('*').in('sender_id', [user1, user2]).in('receiver_id', [user1, user2]).order('created_at', { ascending: true });
@@ -246,7 +252,6 @@ export const agentAPI = {
         if (error) throw error;
     },
 
-    // 7. WEBSOCKETS (REALTIME)
     subscribeToQueue(onUpdateCallback) {
         return supabase.channel('agent-queue').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => onUpdateCallback()).subscribe();
     },
