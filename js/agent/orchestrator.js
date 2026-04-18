@@ -11,10 +11,15 @@ export const Orchestrator = {
         this.systemSettings = settings || {};
         this.isSystemActive = this.systemSettings.is_orchestrator_active || false;
         
+        console.log(`[Orquestrador] Iniciado. Agente: ${this.agentId} | Global Ligado: ${this.isSystemActive}`);
+
         supabase.channel('orchestrator-realtime')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
+                console.log(`[Orquestrador] 🚨 NOVO TICKET NA FILA (ID: ${payload.new.id}). Avaliando...`);
                 if (this.isRoutingActive && this.isSystemActive) {
                     await this.evaluateAndClaim(payload.new);
+                } else {
+                    console.log(`[Orquestrador] ❌ Ignorado. Routing Local: ${this.isRoutingActive} | Global: ${this.isSystemActive}`);
                 }
             }).subscribe();
     },
@@ -42,16 +47,20 @@ export const Orchestrator = {
         if (!this.isRoutingActive || !this.isSystemActive) return;
 
         try {
+            console.log("[Orquestrador] 🔍 Buscando o próximo ticket da fila...");
+            
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
-            if (profile?.status !== 'online') return; 
+            if (profile?.status !== 'online') {
+                console.log(`[Orquestrador] ❌ Busca abortada: Agente está em status '${profile?.status}'.`);
+                return;
+            }
 
-            // Conta quantos casos ESTÃO AGUARDANDO O ANALISTA RESPONDER
             const { data: myTickets } = await supabase.from('tickets')
                 .select('id, channel, last_sender')
                 .eq('agent_id', this.agentId)
                 .eq('status', 'in_progress');
 
-            // Só conta os que estão aguardando agente (last_sender != 'agent')
+            // Só contabiliza o que está AGUARDANDO o analista
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 
@@ -61,7 +70,10 @@ export const Orchestrator = {
             const canTakeChat = profile?.can_web && (myWaitingChats < maxChats);
             const canTakeEmail = profile?.can_email && (myWaitingEmails < maxEmails);
 
-            if (!canTakeChat && !canTakeEmail) return; 
+            if (!canTakeChat && !canTakeEmail) {
+                console.log(`[Orquestrador] ❌ Busca abortada: Limites atingidos. Chats(${myWaitingChats}/${maxChats}) Emails(${myWaitingEmails}/${maxEmails})`);
+                return; 
+            }
 
             const allowedChannels = [];
             if (canTakeChat) allowedChannels.push('web');
@@ -69,7 +81,11 @@ export const Orchestrator = {
 
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const subjectIds = skills.map(s => s.subject_id);
-            if (subjectIds.length === 0) return;
+            
+            if (subjectIds.length === 0) {
+                console.log(`[Orquestrador] ❌ Busca abortada: Agente não possui NENHUMA Skill (Assunto) cadastrada.`);
+                return;
+            }
 
             const { data: tickets } = await supabase.from('tickets')
                 .select('*')
@@ -81,10 +97,13 @@ export const Orchestrator = {
                 .limit(1);
 
             if (tickets && tickets.length > 0) {
+                console.log(`[Orquestrador] ✅ Ticket Encontrado! Puxando protocolo HZ-${tickets[0].protocol_number}`);
                 await this.evaluateAndClaim(tickets[0]);
+            } else {
+                console.log(`[Orquestrador] 💤 Nenhum ticket novo compatível com o agente no momento.`);
             }
         } catch (err) {
-            console.error("Erro Orquestrador:", err);
+            console.error("Erro no Orquestrador:", err);
         }
     },
 
@@ -105,12 +124,21 @@ export const Orchestrator = {
             const maxChats = profile.max_chats || 3;
             const maxEmails = profile.max_emails || 5;
 
-            if (ticket.channel === 'web' && myWaitingChats >= maxChats) return;
-            if (ticket.channel === 'email' && myWaitingEmails >= maxEmails) return;
+            if (ticket.channel === 'web' && myWaitingChats >= maxChats) {
+                console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Limite de Chat Atingido.`);
+                return;
+            }
+            if (ticket.channel === 'email' && myWaitingEmails >= maxEmails) {
+                console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Limite de E-mail Atingido.`);
+                return;
+            }
 
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const hasSkill = skills.some(s => s.subject_id === ticket.subject_id);
-            if (!hasSkill) return;
+            if (!hasSkill) {
+                console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Agente não tem a Skill necessária.`);
+                return;
+            }
 
             const { data } = await supabase.from('tickets')
                 .update({ agent_id: this.agentId, status: 'in_progress', last_interaction_at: new Date() })
@@ -119,8 +147,9 @@ export const Orchestrator = {
                 .select();
 
             if (data && data.length > 0) {
+                console.log(`[Orquestrador] 🚀 SUCESSO! Ticket HZ-${ticket.protocol_number} atribuído ao agente.`);
                 window.dispatchEvent(new CustomEvent('ticket-assigned', { detail: data[0] }));
             }
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error("Falha ao avaliar/capturar:", err); }
     }
 };

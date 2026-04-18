@@ -49,7 +49,7 @@ const App = {
             if (this.isRegisterMode) {
                 try { 
                     await agentAPI.register(document.getElementById('reg-name').value, email, pass); 
-                    alert("Aguarde aprovação."); 
+                    alert("Aguarde aprovação do gestor."); 
                     this.toggleAuthMode(); 
                 } catch (err) { 
                     alert("Erro: " + err.message); 
@@ -252,9 +252,10 @@ const App = {
     async toggleGlobalOrchestrator(isActive) {
         try {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
+            console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`);
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global.");
+            alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
         }
     },
 
@@ -438,7 +439,7 @@ const App = {
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
             await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'SLA', 'SLA', 'Encerrado Automaticamente por Inatividade');
+            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente', '', 'SLA de Inatividade');
             
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
@@ -669,9 +670,10 @@ const App = {
                     ? `<span class="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">mail</span> E-MAIL</span>` 
                     : `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">forum</span> CHAT</span>`;
 
+                // AQUI ESTÁ A CORREÇÃO DO "NA FILA (AGUARDANDO)"
                 let agentDisplay = `
                 <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px] relative z-30">
-                    <option value="">Devolver para Fila</option>
+                    ${!t.agent_id ? '<option value="" selected>Na Fila (Aguardando)</option>' : '<option value="">Devolver para Fila</option>'}
                     ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name}</option>`).join('')}
                 </select>`;
                 
@@ -808,7 +810,6 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
-            // TAGS: Preenche os dropdowns de Tag 1
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
