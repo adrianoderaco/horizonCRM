@@ -1,140 +1,115 @@
-import { clientAPI } from './api.js';
+import { supabase } from '../supabase.js';
 
-const App = {
-    selectedSubject: null,
-    channel: null,
-    ticketId: null,
-
-    async init() {
-        window.clientApp = this;
-        await this.loadSubjects();
-
-        document.getElementById('register-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = e.target.querySelector('button[type="submit"]');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Aguarde...`;
-            
-            const name = document.getElementById('cust-name').value;
-            const email = document.getElementById('cust-email').value;
-            const phone = document.getElementById('cust-phone').value;
-            const initialMessage = document.getElementById('cust-message').value;
-
-            try {
-                let customer = await clientAPI.checkCustomer(email);
-                if (!customer) customer = await clientAPI.createCustomer({ full_name: name, email: email, phone: phone });
-                
-                const ticket = await clientAPI.createTicket(customer.id, this.selectedSubject, this.channel);
-                this.ticketId = ticket.id;
-                
-                await clientAPI.sendMessage(this.ticketId, initialMessage);
-
-                if (this.channel === 'email') {
-                    this.navigate('success-email');
-                    document.getElementById('success-protocol').innerText = `Protocolo HZ-${ticket.protocol_number}`;
-                    return; // Finaliza aqui para e-mail
-                }
-                
-                // Fluxo de Chat
-                this.navigate('chat');
-                document.getElementById('header-desc').innerText = `Protocolo HZ-${ticket.protocol_number}`;
-                this.renderMsg("Olá! Recebemos seu chamado e sua solicitação já está na fila.", 'system');
-                this.renderMsg(initialMessage, 'customer');
-
-                clientAPI.subscribeToTicket(this.ticketId, (t) => {
-                    if (t.status === 'closed') { this.navigate('nps'); this.renderNPSButtons(); }
-                    const btnAttach = document.getElementById('btn-attach');
-                    if (btnAttach) {
-                        if (t.is_upload_enabled) btnAttach.classList.remove('hidden-view');
-                        else btnAttach.classList.add('hidden-view');
-                    }
-                });
-
-                clientAPI.subscribeToMessages(this.ticketId, (msg, fUrl, fName, fType) => {
-                    this.renderMsg(msg, 'agent', fUrl, fName, fType);
-                });
-
-            } catch (err) { alert("Erro ao iniciar atendimento: " + err.message); btn.innerHTML = originalText; }
-        });
-
-        document.getElementById('chat-form')?.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('chat-input');
-            const text = input.value.trim();
-            if(!text || !this.ticketId) return;
-            this.renderMsg(text, 'customer');
-            input.value = '';
-            try { await clientAPI.sendMessage(this.ticketId, text); } catch(e) { console.error("Erro msg", e); }
-        });
-
-        document.getElementById('file-input')?.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if(!file) return;
-            document.getElementById('upload-progress').classList.remove('hidden-view');
-            document.getElementById('btn-send').disabled = true;
-            try {
-                const fileData = await clientAPI.uploadFile(file);
-                await clientAPI.sendMessage(this.ticketId, "📎 Anexo enviado pelo cliente:", fileData);
-                this.renderMsg("📎 Anexo enviado:", 'customer', fileData.url, fileData.name, fileData.type);
-            } catch(err) { alert("Erro no upload."); } 
-            finally { document.getElementById('upload-progress').classList.add('hidden-view'); document.getElementById('btn-send').disabled = false; e.target.value = ''; }
-        });
+export const agentAPI = {
+    async login(email, password) {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await supabase.from('profiles').update({ is_online: true }).eq('id', data.user.id);
+        return data;
+    },
+    async setOffline(userId) { await supabase.from('profiles').update({ is_online: false }).eq('id', userId); },
+    async register(name, email, password) {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        if (data.user) await supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, is_approved: false, role: 'analista' }]);
+        return data;
+    },
+    async getPendingTickets() {
+        const { data, error } = await supabase.from('tickets').select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, customers (full_name, email), ticket_subjects (label)`).in('status', ['open', 'in_progress']).order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
+    },
+    async getTicketDetails(ticketId) {
+        const { data, error } = await supabase.from('tickets').select(`*, customers (*), ticket_subjects (label)`).eq('id', ticketId).single();
+        if (error) throw error;
+        return data;
+    },
+    async closeTicket(ticketId, tag2Text) { await supabase.from('tickets').update({ status: 'closed', tag2_detail: tag2Text, closed_at: new Date(), is_upload_enabled: false }).eq('id', ticketId); },
+    async transferTicket(ticketId, newSubjectId, newAgentId, tag2Text) {
+        const updates = { tag2_detail: tag2Text, status: 'open', last_interaction_at: new Date(), is_upload_enabled: false };
+        if (newAgentId) updates.agent_id = newAgentId; else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
+        await supabase.from('tickets').update(updates).eq('id', ticketId);
+    },
+    async releaseMyTickets(agentId) { await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false }).eq('agent_id', agentId).eq('status', 'in_progress'); },
+    async reassignTicket(ticketId, newAgentId) {
+        const updates = newAgentId ? { agent_id: newAgentId, status: 'in_progress', last_interaction_at: new Date() } : { agent_id: null, status: 'open', last_interaction_at: new Date() };
+        await supabase.from('tickets').update(updates).eq('id', ticketId);
+    },
+    async getActiveAgents() {
+        const { data, error } = await supabase.from('profiles').select('id, full_name, can_web, can_email').eq('is_approved', true).eq('is_online', true).order('full_name');
+        if (error) throw error;
+        return data;
+    },
+    async getMessages(ticketId) {
+        const { data, error } = await supabase.from('messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
     },
 
-    navigate(target) {
-        ['subjects', 'channel', 'register', 'chat', 'nps', 'success-email'].forEach(s => {
-            const el = document.getElementById(`sec-${s}`);
-            if (el) el.classList.add('hidden-view');
-        });
-        const targetEl = document.getElementById(`sec-${target}`);
-        if (targetEl) targetEl.classList.remove('hidden-view');
+    async uploadFile(file) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const { error } = await supabase.storage.from('attachments').upload(fileName, file);
+        if (error) throw error;
+        const { data } = supabase.storage.from('attachments').getPublicUrl(fileName);
+        return { url: data.publicUrl, name: file.name, type: file.type };
+    },
+    
+    async sendMessage(ticketId, content, fileData = null) {
+        const payload = { ticket_id: ticketId, sender_type: 'agent', content: content };
+        if (fileData) { payload.file_url = fileData.url; payload.file_name = fileData.name; payload.file_type = fileData.type; }
+        await supabase.from('messages').insert([payload]);
+        await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date() }).eq('id', ticketId);
     },
 
-    async loadSubjects() {
-        const container = document.getElementById('subject-list');
-        if (!container) return;
-        try {
-            const subjects = await clientAPI.getActiveSubjects();
-            if (!subjects || subjects.length === 0) return;
-            container.innerHTML = subjects.map(s => `<button onclick="clientApp.selectSubject('${s.id}')" class="w-full text-left p-6 bg-white border-2 border-slate-200 rounded-2xl hover:border-blue-600 hover:bg-blue-50 transition-all font-black text-slate-700 flex justify-between items-center group">${s.label} <span class="material-symbols-outlined text-slate-300 group-hover:text-blue-600">chevron_right</span></button>`).join('');
-        } catch (e) { container.innerHTML = `<div class="text-center text-red-500 font-bold py-4">Erro.</div>`; }
+    async toggleUpload(ticketId, isEnabled) {
+        const { error } = await supabase.from('tickets').update({ is_upload_enabled: isEnabled }).eq('id', ticketId);
+        if (error) throw error;
+    },
+    
+    // GESTÃO DE CANAIS DO AGENTE
+    async toggleChannel(agentId, channel, isEnabled) {
+        const col = channel === 'web' ? 'can_web' : 'can_email';
+        const { error } = await supabase.from('profiles').update({ [col]: isEnabled }).eq('id', agentId);
+        if (error) throw error;
     },
 
-    selectSubject(id) { this.selectedSubject = id; this.navigate('channel'); },
-    selectChannel(ch) { this.channel = ch; this.navigate('register'); },
-
-    renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {
-        const area = document.getElementById('chat-messages');
-        if (!area) return;
-        let mediaHtml = '';
-        if (fileUrl) {
-            if (fileType && fileType.startsWith('image/')) mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] rounded-lg border hover:opacity-80 transition-opacity"></a></div>`;
-            else mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-1 bg-black/10 p-2 rounded text-[10px] font-bold text-inherit hover:bg-black/20 transition-colors"><span class="material-symbols-outlined text-xs">download</span> ${fileName || 'Arquivo'}</a></div>`;
-        }
-        if (type === 'system') { area.innerHTML += `<div class="flex justify-center w-full"><div class="bg-blue-50 text-blue-800 text-xs font-bold px-4 py-2 rounded-full border border-blue-100 text-center">${text}</div></div>`; } 
-        else {
-            const isMe = type === 'customer';
-            area.innerHTML += `<div class="flex ${isMe ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[85%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isMe ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}${mediaHtml}</div></div>`;
-        }
-        area.scrollTop = area.scrollHeight;
+    async getCustomerHistoryByEmail(email) {
+        const { data, error } = await supabase.from('tickets').select(`*, customers!inner(email), ticket_subjects(label)`).eq('customers.email', email).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
     },
-
-    renderNPSButtons() {
-        const container = document.getElementById('nps-buttons');
-        if (!container) return;
-        let html = '';
-        for(let i=1; i<=10; i++) {
-            let colorClass = i <= 6 ? 'bg-red-100 text-red-600 hover:bg-red-500 hover:text-white' : i <= 8 ? 'bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white' : 'bg-green-100 text-green-600 hover:bg-green-500 hover:text-white';
-            html += `<button onclick="clientApp.submitNPS(${i}, this)" class="flex-1 h-10 sm:h-12 rounded-lg sm:rounded-xl font-black text-sm sm:text-base transition-all flex items-center justify-center ${colorClass}">${i}</button>`;
-        }
-        container.innerHTML = html;
+    async getCustomerOrders(customerId) {
+        const { data, error } = await supabase.from('orders').select('*').eq('customer_id', customerId).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
     },
-
-    async submitNPS(rating, btnElement) {
-        document.querySelectorAll('#nps-buttons button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
-        btnElement.style.opacity = '1'; btnElement.style.transform = 'scale(1.1)';
-        try { await clientAPI.submitNPS(this.ticketId, rating); document.getElementById('nps-thanks').classList.remove('hidden-view'); } catch (e) { alert("Erro ao salvar avaliação."); }
+    async createOrder(orderData) { await supabase.from('orders').insert([orderData]); },
+    async getTeamProfiles() {
+        const { data, error } = await supabase.from('profiles').select('*, agent_skills(subject_id)').order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
+    },
+    async getAllSubjects() {
+        const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
+        if (error) throw error;
+        return data;
+    },
+    async approveUser(userId, role) { await supabase.from('profiles').update({ is_approved: true, role: role }).eq('id', userId); },
+    async updateRoutingStatus(userId, isActive) { await supabase.from('profiles').update({ is_routing_active: isActive }).eq('id', userId); },
+    async toggleAgentSkill(agentId, subjectId, isAdding) {
+        if (isAdding) await supabase.from('agent_skills').insert([{ agent_id: agentId, subject_id: subjectId }]);
+        else await supabase.from('agent_skills').delete().eq('agent_id', agentId).eq('subject_id', subjectId);
+    },
+    subscribeToQueue(onUpdateCallback) { return supabase.channel('agent-queue').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => onUpdateCallback()).subscribe(); },
+    subscribeToMessages(ticketId, onNewMessage) {
+        return supabase.channel(`ticket-${ticketId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
+            if (payload.new.sender_type === 'customer') { onNewMessage(payload.new.content, payload.new.file_url, payload.new.file_name, payload.new.file_type); }
+        }).subscribe();
+    },
+    subscribeToAllMessages(ticketId, onNewMessage) {
+        return supabase.channel(`monitor-${ticketId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
+            onNewMessage(payload.new.content, payload.new.sender_type, payload.new.created_at, payload.new.file_url, payload.new.file_name, payload.new.file_type);
+        }).subscribe();
     }
 };
-
-App.init();

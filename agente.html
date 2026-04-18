@@ -19,19 +19,10 @@
 <body class="antialiased overflow-hidden relative">
 
     <section id="view-login" class="min-h-screen w-full flex flex-row relative z-50 bg-white">
-        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16 text-white">
-            <div class="z-10">
-                <div class="flex items-center gap-3 mb-6"><div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center"><span class="material-symbols-outlined text-white text-3xl">cloud</span></div><h1 class="text-3xl font-extrabold tracking-tight">Horizon CRM</h1></div>
-                <h2 class="text-6xl font-black leading-tight">Painel Operacional<br/><span class="text-blue-500">Realtime</span></h2>
-            </div>
-            <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-        </div>
+        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16 text-white"><div class="z-10"><div class="flex items-center gap-3 mb-6"><div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center"><span class="material-symbols-outlined text-white text-3xl">cloud</span></div><h1 class="text-3xl font-extrabold tracking-tight">Horizon CRM</h1></div><h2 class="text-6xl font-black leading-tight">Painel Operacional<br/><span class="text-blue-500">Realtime</span></h2></div><div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div></div>
         <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white z-10 shadow-2xl overflow-y-auto">
             <div class="w-full max-w-md space-y-8">
-                <header>
-                    <h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3>
-                    <p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais para acessar a fila.</p>
-                </header>
+                <header><h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3><p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais.</p></header>
                 <form id="login-form" class="space-y-6">
                     <div class="space-y-4">
                         <input type="text" id="reg-name" class="hidden-view w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Nome Completo" />
@@ -46,17 +37,16 @@
     </section>
 
     <div id="view-app" class="hidden-view h-screen flex relative z-10">
-        <div id="sidebar-root" class="h-full shrink-0 z-20"></div>
+        <div id="sidebar-root" class="h-full shrink-0 z-20 relative bg-slate-900"></div>
 
         <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
-            
             <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 z-10 gap-4 relative">
                 <div class="text-sm font-bold text-slate-400 uppercase tracking-widest shrink-0">Console</div>
                 <div id="bubble-container" class="flex items-center gap-2 overflow-x-auto flex-1 px-4 py-1" style="scrollbar-width: none;"></div>
                 <div class="flex items-center gap-4 shrink-0">
                     <div id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200">
                         <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
-                        <input type="checkbox" id="toggle-routing" class="sr-only peer" onchange="agentApp.toggleRouting(this.checked)">
+                        <input type="checkbox" id="toggle-routing" class="sr-only peer">
                         <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 relative"></div>
                     </div>
                     <div class="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-bold border"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online</div>
@@ -72,43 +62,44 @@
                 </section>
                 
                 <section id="sec-team" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-5xl mx-auto"><h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2><div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Analista</th><th class="p-5">Status / Acesso</th><th class="p-5">Skills (Assuntos)</th><th class="p-5 text-right">Ações</th></tr></thead><tbody class="divide-y" id="team-tbody"></tbody></table></div></div>
+                    <div class="max-w-5xl mx-auto"><h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2><div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Analista</th><th class="p-5">Canais e Skills</th><th class="p-5 text-right">Ações</th></tr></thead><tbody class="divide-y" id="team-tbody"></tbody></table></div></div>
                 </section>
 
                 <section id="sec-dashboard" class="p-8 h-full overflow-y-auto hidden-view">
                     <div class="max-w-6xl mx-auto space-y-8">
                         <h2 class="text-3xl font-black text-slate-900">Dashboard Executivo</h2>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total</div><div class="text-4xl font-black text-slate-900" id="stat-total">0</div></div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div><div class="text-4xl font-black text-blue-600" id="stat-open">0</div></div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div><div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div></div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Vendas</div><div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div></div>
-                        </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center"><h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3><div class="relative w-full max-w-[300px] aspect-square"><canvas id="chartStatus"></canvas></div></div>
-                            <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col"><h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Ranking de Analistas (NPS)</h3><div id="analyst-ranking" class="space-y-4 overflow-y-auto flex-1 pr-2"></div></div>
-                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6"><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total</div><div class="text-4xl font-black text-slate-900" id="stat-total">0</div></div><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div><div class="text-4xl font-black text-blue-600" id="stat-open">0</div></div><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div><div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div></div><div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Vendas</div><div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div></div></div>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center"><h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3><div class="relative w-full max-w-[300px] aspect-square"><canvas id="chartStatus"></canvas></div></div><div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col"><h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Ranking de Analistas (NPS)</h3><div id="analyst-ranking" class="space-y-4 overflow-y-auto flex-1 pr-2"></div></div></div>
                     </div>
                 </section>
 
                 <section id="sec-chat" class="h-full hidden-view flex overflow-hidden">
-                    <div class="flex-1 flex flex-col bg-white border-r">
-                        <header class="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0">
-                            <div><h3 class="font-black text-slate-900" id="chat-header-name">Cliente</h3><div class="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">Protocolo: <span id="chat-header-protocol" class="text-blue-600">---</span></div></div>
+                    <div class="flex-1 flex flex-col bg-white border-r relative z-10">
+                        
+                        <header class="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0 relative z-20">
+                            <div>
+                                <h3 class="font-black text-slate-900 flex items-center gap-2" id="chat-header-name">Cliente</h3>
+                                <div class="flex items-center gap-3 mt-1">
+                                    <span class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded" id="chat-header-protocol">---</span>
+                                    <span class="text-[10px] font-black text-slate-500 bg-slate-200 px-2 py-0.5 rounded flex items-center gap-1" id="chat-header-channel"><span class="material-symbols-outlined text-[12px]">forum</span> Web</span>
+                                    <span class="text-xs font-bold text-slate-500 truncate max-w-[200px]" id="chat-header-subject">• Assunto</span>
+                                </div>
+                            </div>
                         </header>
+
                         <div id="chat-history" class="flex-1 overflow-y-auto p-6 space-y-4 relative z-10"></div>
                         
                         <form id="agent-chat-form" class="p-4 bg-white border-t shrink-0 flex items-center gap-3 relative z-20">
                             <div class="flex items-center gap-2 border-r pr-3 shrink-0">
-                                <span class="text-[10px] font-bold text-slate-500 uppercase" id="upload-status-text">Anexos (Cli): Off</span>
+                                <span class="text-[10px] font-bold text-slate-500 uppercase" id="upload-status-text">Anexos: Off</span>
                                 <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="toggle-upload" class="sr-only peer" onchange="agentApp.toggleClientUpload(this.checked)">
+                                    <input type="checkbox" id="toggle-upload" class="sr-only peer">
                                     <div class="w-7 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
                             
                             <input type="file" id="agent-file-input" class="hidden-view" accept="image/*,.pdf,.doc,.docx">
-                            <button type="button" onclick="document.getElementById('agent-file-input').click()" class="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors" title="Enviar Arquivo para o Cliente">
+                            <button type="button" id="btn-agent-attach" class="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors" title="Enviar Arquivo">
                                 <span class="material-symbols-outlined">attach_file</span>
                             </button>
 
