@@ -4,86 +4,42 @@ import { Orchestrator } from './orchestrator.js';
 import { Sidebar } from './sidebar.js';
 
 const App = {
-    activeTicketId: null,
-    messageSub: null,
-    monitorSub: null,
-    isRegisterMode: false,
-    currentUser: null,
-    currentCustomer: null,
-    allSubjects: [],
-    activeAgents: [],
-    timerInterval: null,
-    activeTickets: [],
+    activeTicketId: null, messageSub: null, monitorSub: null, isRegisterMode: false,
+    currentUser: null, currentCustomer: null, allSubjects: [], activeAgents: [], timerInterval: null, activeTickets: [],
 
     init() {
         window.agentApp = this; 
         this.startLiveTimers(); 
 
-        window.addEventListener('ticket-assigned', async (e) => {
-            await this.loadQueue(); 
-            this.pickTicket(e.detail.id);
-        });
+        window.addEventListener('ticket-assigned', async (e) => { await this.loadQueue(); this.pickTicket(e.detail.id); });
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('btn-login');
-            const originalText = btn.innerHTML;
+            const btn = document.getElementById('btn-login'); const originalText = btn.innerHTML;
             btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Processando...`;
-            
-            const email = document.getElementById('login-email').value;
-            const pass = document.getElementById('login-pass').value;
+            const email = document.getElementById('login-email').value; const pass = document.getElementById('login-pass').value;
 
             if (this.isRegisterMode) {
-                try {
-                    await agentAPI.register(document.getElementById('reg-name').value, email, pass);
-                    alert("Aguarde aprovação.");
-                    this.toggleAuthMode();
-                } catch (err) { alert("Erro: " + err.message); } 
-                finally { btn.innerHTML = originalText; }
+                try { await agentAPI.register(document.getElementById('reg-name').value, email, pass); alert("Aguarde aprovação."); this.toggleAuthMode(); } catch (err) { alert("Erro: " + err.message); } finally { btn.innerHTML = originalText; }
                 return;
             }
 
             try {
                 const authData = await agentAPI.login(email, pass);
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
+                if (!profile || !profile.is_approved) { alert("Acesso pendente."); await supabase.auth.signOut(); btn.innerHTML = originalText; return; }
                 
-                if (!profile || !profile.is_approved) {
-                    alert("Acesso pendente.");
-                    await supabase.auth.signOut();
-                    btn.innerHTML = originalText;
-                    return;
-                }
-
-                this.currentUser = profile;
-                document.getElementById('view-login').classList.add('hidden-view');
-                document.getElementById('view-app').classList.remove('hidden-view');
-                
-                this.allSubjects = await agentAPI.getAllSubjects();
-                this.activeAgents = await agentAPI.getActiveAgents();
+                this.currentUser = profile; document.getElementById('view-login').classList.add('hidden-view'); document.getElementById('view-app').classList.remove('hidden-view');
+                this.allSubjects = await agentAPI.getAllSubjects(); this.activeAgents = await agentAPI.getActiveAgents();
                 
                 Sidebar.render('sidebar-root', profile.role);
-                
-                if (profile.role === 'gestor') {
-                    document.getElementById('wrapper-routing').classList.remove('hidden-view');
-                    this.renderDashboard(); 
-                }
-                
-                document.getElementById('toggle-routing').checked = profile.is_routing_active;
-                Orchestrator.init(profile.id, profile.is_routing_active);
+                this.applyWatermark(profile.full_name); // MARCA D'ÁGUA SEGURANÇA
 
+                if (profile.role === 'gestor') { document.getElementById('wrapper-routing').classList.remove('hidden-view'); this.renderDashboard(); }
+                document.getElementById('toggle-routing').checked = profile.is_routing_active; Orchestrator.init(profile.id, profile.is_routing_active);
                 await this.loadQueue();
-
-                agentAPI.subscribeToQueue(() => {
-                    this.loadQueue();
-                    if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
-                        this.renderDashboard();
-                    }
-                });
-
-            } catch (error) { 
-                alert("Erro no login: " + error.message); 
-                btn.innerHTML = originalText; 
-            }
+                agentAPI.subscribeToQueue(() => { this.loadQueue(); if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) { this.renderDashboard(); } });
+            } catch (error) { alert("Erro no login: " + error.message); btn.innerHTML = originalText; }
         });
 
         document.getElementById('agent-chat-form').addEventListener('submit', async (e) => {
@@ -91,34 +47,52 @@ const App = {
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
-            
-            this.renderMsg(text, 'agent');
-            input.value = '';
-            
+            this.renderMsg(text, 'agent'); input.value = '';
             try {
                 await agentAPI.sendMessage(this.activeTicketId, text);
-                
                 const tkIndex = this.activeTickets.findIndex(t => t.id === this.activeTicketId);
-                if (tkIndex > -1) {
-                    this.activeTickets[tkIndex].last_sender = 'agent';
-                    this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString();
-                    this.renderBubbles(); 
-                }
-            } catch(e) {
-                console.error(e);
-                alert("Erro ao enviar mensagem.");
-            }
+                if (tkIndex > -1) { this.activeTickets[tkIndex].last_sender = 'agent'; this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString(); this.renderBubbles(); }
+            } catch(e) { alert("Erro ao enviar mensagem."); }
         });
+
+        // NOVO: Ação do envio de arquivo pelo agente
+        const agentFileInput = document.getElementById('agent-file-input');
+        if (agentFileInput) {
+            agentFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if(!file || !this.activeTicketId) return;
+                
+                const btn = document.getElementById('btn-send');
+                const origText = btn.innerHTML;
+                btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span>`;
+                btn.disabled = true;
+
+                try {
+                    const fileData = await agentAPI.uploadFile(file);
+                    await agentAPI.sendMessage(this.activeTicketId, "📎 Anexo enviado pelo Analista:", fileData);
+                    this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type);
+                    
+                    const tkIndex = this.activeTickets.findIndex(t => t.id === this.activeTicketId);
+                    if (tkIndex > -1) { this.activeTickets[tkIndex].last_sender = 'agent'; this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString(); this.renderBubbles(); }
+                } catch(err) { alert("Erro no upload do anexo."); } 
+                finally { btn.innerHTML = origText; btn.disabled = false; e.target.value = ''; }
+            });
+        }
+    },
+
+    applyWatermark(name) {
+        const wm = document.createElement('div');
+        wm.className = 'fixed inset-0 z-0 pointer-events-none overflow-hidden flex flex-wrap justify-center items-center select-none';
+        wm.style.opacity = '0.03';
+        let spans = '';
+        for(let i=0; i<150; i++) spans += `<span class="transform -rotate-45 text-2xl font-black whitespace-nowrap p-6 text-slate-900">${name}</span>`;
+        wm.innerHTML = spans;
+        document.getElementById('view-app').appendChild(wm);
     },
 
     async logout() {
         if(confirm("Deseja sair? Seus atendimentos em andamento voltarão para a fila!")) {
-            try {
-                await agentAPI.releaseMyTickets(this.currentUser.id);
-                await agentAPI.setOffline(this.currentUser.id);
-                await supabase.auth.signOut();
-                location.reload();
-            } catch(e) { alert("Erro ao deslogar."); }
+            try { await agentAPI.releaseMyTickets(this.currentUser.id); await agentAPI.setOffline(this.currentUser.id); await supabase.auth.signOut(); location.reload(); } catch(e) { alert("Erro ao deslogar."); }
         }
     },
 
@@ -127,25 +101,16 @@ const App = {
         this.timerInterval = setInterval(() => {
             document.querySelectorAll('.live-timer').forEach(el => {
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
-                const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0');
-                const m = String(Math.floor((diffSeconds % 3600) / 60)).padStart(2, '0');
-                const s = String(diffSeconds % 60).padStart(2, '0');
+                const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0'); const m = String(Math.floor((diffSeconds % 3600) / 60)).padStart(2, '0'); const s = String(diffSeconds % 60).padStart(2, '0');
                 el.innerText = `${h}:${m}:${s}`;
                 if (diffSeconds > 600) { el.classList.remove('text-slate-600'); el.classList.add('text-red-600'); }
             });
-
             document.querySelectorAll('.chat-bubble').forEach(el => {
                 const lastSender = el.dataset.sender;
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
-                
                 el.classList.remove('bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-red-500', 'animate-pulse');
-
-                if (lastSender === 'customer') {
-                    el.classList.add('bg-blue-500', 'animate-pulse');
-                } else {
-                    if (diffSeconds < 300) el.classList.add('bg-green-500');      
-                    else if (diffSeconds < 600) el.classList.add('bg-orange-500'); 
-                    else el.classList.add('bg-red-500');                           
+                if (lastSender === 'customer') { el.classList.add('bg-blue-500', 'animate-pulse'); } else {
+                    if (diffSeconds < 300) el.classList.add('bg-green-500'); else if (diffSeconds < 600) el.classList.add('bg-orange-500'); else el.classList.add('bg-red-500');                           
                 }
             });
         }, 1000);
@@ -154,21 +119,10 @@ const App = {
     renderBubbles() {
         const container = document.getElementById('bubble-container');
         if(!container) return;
-        
-        const myTickets = this.activeTickets
-            .filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id)
-            .sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
-        
+        const myTickets = this.activeTickets.filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id).sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
         container.innerHTML = myTickets.map(t => {
             const initial = t.customers?.full_name ? t.customers.full_name.charAt(0).toUpperCase() : 'C';
-            return `
-            <div onclick="agentApp.pickTicket('${t.id}')" 
-                 class="chat-bubble cursor-pointer text-white text-lg font-black w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 shrink-0 border-2 ${this.activeTicketId === t.id ? 'border-slate-800' : 'border-transparent'}"
-                 data-sender="${t.last_sender || 'customer'}" 
-                 data-time="${t.last_interaction_at || t.created_at}"
-                 title="${t.customers?.full_name || 'Cliente'} (HZ-${t.protocol_number})">
-                 ${initial}
-            </div>`
+            return `<div onclick="agentApp.pickTicket('${t.id}')" class="chat-bubble cursor-pointer text-white text-lg font-black w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 shrink-0 border-2 ${this.activeTicketId === t.id ? 'border-slate-800' : 'border-transparent'}" data-sender="${t.last_sender || 'customer'}" data-time="${t.last_interaction_at || t.created_at}" title="${t.customers?.full_name || 'Cliente'} (HZ-${t.protocol_number})">${initial}</div>`
         }).join('');
     },
 
@@ -177,412 +131,192 @@ const App = {
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
         document.getElementById('btn-login').innerHTML = this.isRegisterMode ? 'Criar Conta' : 'Entrar <span class="material-symbols-outlined">login</span>';
         const regName = document.getElementById('reg-name');
-        if (this.isRegisterMode) { regName.classList.remove('hidden-view'); regName.required = true; } 
-        else { regName.classList.add('hidden-view'); regName.required = false; }
+        if (this.isRegisterMode) { regName.classList.remove('hidden-view'); regName.required = true; } else { regName.classList.add('hidden-view'); regName.required = false; }
     },
 
     navigate(target) {
         ['queue', 'chat', 'team', 'dashboard'].forEach(s => document.getElementById(`sec-${s}`)?.classList.add('hidden-view'));
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
-        if (target === 'team') this.loadTeam();
-        if (target === 'dashboard') this.renderDashboard();
+        if (target === 'team') this.loadTeam(); if (target === 'dashboard') this.renderDashboard();
     },
 
-    async toggleRouting(isActive) {
-        try {
-            await agentAPI.updateRoutingStatus(this.currentUser.id, isActive);
-            Orchestrator.setStatus(isActive); 
-        } catch(e) { document.getElementById('toggle-routing').checked = !isActive; }
-    },
+    async toggleRouting(isActive) { try { await agentAPI.updateRoutingStatus(this.currentUser.id, isActive); Orchestrator.setStatus(isActive); } catch(e) { document.getElementById('toggle-routing').checked = !isActive; } },
 
     async toggleClientUpload(isEnabled) {
-        try {
-            await agentAPI.toggleUpload(this.activeTicketId, isEnabled);
-            this.updateUploadToggleUI(isEnabled);
-        } catch(e) { 
-            alert("Erro ao mudar permissão."); 
-            document.getElementById('toggle-upload').checked = !isEnabled; 
-        }
+        try { await agentAPI.toggleUpload(this.activeTicketId, isEnabled); this.updateUploadToggleUI(isEnabled); } catch(e) { alert("Erro ao mudar permissão."); document.getElementById('toggle-upload').checked = !isEnabled; }
     },
 
     updateUploadToggleUI(isEnabled) {
         const textEl = document.getElementById('upload-status-text');
-        textEl.innerText = isEnabled ? 'Anexos: Liberado' : 'Anexos: Bloqueado';
+        textEl.innerText = isEnabled ? 'Anexos (Cli): Liberado' : 'Anexos (Cli): Bloqueado';
         textEl.className = `text-[10px] font-bold uppercase ${isEnabled ? 'text-blue-600' : 'text-slate-500'}`;
     },
 
     async loadQueue() {
         this.activeTickets = await agentAPI.getPendingTickets();
-        const tbody = document.getElementById('queue-tbody');
-        const countEl = document.getElementById('queue-count');
-        const isGestor = this.currentUser.role === 'gestor';
-
+        const tbody = document.getElementById('queue-tbody'); const countEl = document.getElementById('queue-count'); const isGestor = this.currentUser.role === 'gestor';
         this.renderBubbles();
-
         const tickets = isGestor ? this.activeTickets : this.activeTickets.filter(t => t.status === 'open' || t.agent_id === this.currentUser.id);
-
         if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
         if (tickets.length === 0) { tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket pendente.</td></tr>`; return; }
 
         tbody.innerHTML = tickets.map(t => {
-            const inProg = t.status === 'in_progress';
-            const isMine = t.agent_id === this.currentUser.id;
-            const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Fila';
-
-            let statusHtml = `
-                <div class="flex flex-col gap-1 items-start">
-                    ${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}
-                    <span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span>
-                </div>
-            `;
-
+            const inProg = t.status === 'in_progress'; const isMine = t.agent_id === this.currentUser.id; const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Fila';
+            let statusHtml = `<div class="flex flex-col gap-1 items-start">${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}<span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span></div>`;
             let agentDisplay = `<span class="text-[11px] font-bold text-slate-500 block mt-1">Analista: ${agentName}</span>`;
-            if (isGestor) {
-                agentDisplay = `
-                    <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px]">
-                        <option value="">Devolver para Fila</option>
-                        ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name} (Online)</option>`).join('')}
-                    </select>
-                `;
-            }
-
-            let actionBtn = `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">${inProg && isMine ? 'Retomar Chat' : 'Atender'}</button>`;
             
-            if (inProg && !isMine && isGestor) {
-                actionBtn = `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>`;
-            }
+            // Fila: Se for email e não estiver em andamento, avisa
+            let chBadge = t.channel === 'email' ? `<span class="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded ml-2 font-bold">E-MAIL</span>` : `<span class="text-[10px] bg-slate-200 px-2 py-0.5 rounded ml-2">WEB</span>`;
 
-            return `
-            <tr class="hover:bg-slate-50 transition-colors">
-                <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} <span class="text-[10px] bg-slate-200 px-2 py-0.5 rounded ml-2">${t.channel}</span></td>
-                <td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td>
-                <td class="p-5">${statusHtml}</td>
-                <td class="p-5 text-right w-32">${actionBtn}</td>
-            </tr>`;
+            if (isGestor) { agentDisplay = `<select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px]"><option value="">Devolver para Fila</option>${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name} (Online)</option>`).join('')}</select>`; }
+            let actionBtn = `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">${inProg && isMine ? 'Retomar Chat' : 'Atender'}</button>`;
+            if (inProg && !isMine && isGestor) { actionBtn = `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>`; }
+            return `<tr class="hover:bg-slate-50 transition-colors relative z-20"><td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} ${chBadge}</td><td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td><td class="p-5">${statusHtml}</td><td class="p-5 text-right w-32">${actionBtn}</td></tr>`;
         }).join('');
     },
 
-    async reassignTicket(ticketId, newAgentId) {
-        if(confirm("Deseja alterar o dono deste chamado?")) {
-            await agentAPI.reassignTicket(ticketId, newAgentId);
-        } else { this.loadQueue(); }
-    },
+    async reassignTicket(ticketId, newAgentId) { if(confirm("Deseja alterar o dono deste chamado?")) { await agentAPI.reassignTicket(ticketId, newAgentId); } else { this.loadQueue(); } },
 
     async monitorTicket(ticketId, protocolNumber) {
-        const modal = document.getElementById('modal-monitor');
-        const content = document.getElementById('monitor-chat-content');
-        document.getElementById('modal-monitor-protocol').innerText = `Protocolo HZ-${protocolNumber}`;
-        
-        modal.classList.remove('hidden-view');
-        content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando conversa...</div>';
-
+        const modal = document.getElementById('modal-monitor'); const content = document.getElementById('monitor-chat-content');
+        document.getElementById('modal-monitor-protocol').innerText = `Protocolo HZ-${protocolNumber}`; modal.classList.remove('hidden-view'); content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando conversa...</div>';
         try {
             const msgs = await agentAPI.getMessages(ticketId);
-            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join('');
-            content.scrollTop = content.scrollHeight;
-
+            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); content.scrollTop = content.scrollHeight;
             if (this.monitorSub) this.monitorSub.unsubscribe();
-            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt, fUrl, fName, fType) => {
-                content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt, fUrl, fName, fType);
-                content.scrollTop = content.scrollHeight;
-            });
+            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt, fUrl, fName, fType) => { content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt, fUrl, fName, fType); content.scrollTop = content.scrollHeight; });
         } catch(e) { content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro ao carregar monitoria.</div>'; }
     },
 
     formatMonitorMsg(text, type, createdAt, fileUrl = null, fileName = null, fileType = null) {
-        const isAgent = type === 'agent';
-        const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-        
+        const isAgent = type === 'agent'; const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
         let mediaHtml = '';
         if (fileUrl) {
-            if (fileType && fileType.startsWith('image/')) {
-                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300"></a></div>`;
-            } else {
-                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-1 bg-black/10 p-2 rounded text-[10px] font-bold"><span class="material-symbols-outlined text-xs">download</span> ${fileName || 'Arquivo'}</a></div>`;
-            }
+            if (fileType && fileType.startsWith('image/')) mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300"></a></div>`;
+            else mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-1 bg-black/10 p-2 rounded text-[10px] font-bold"><span class="material-symbols-outlined text-xs">download</span> ${fileName || 'Arquivo'}</a></div>`;
         }
-
-        return `
-            <div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4">
-                <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div>
-                <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}${mediaHtml}</div>
-            </div>`;
+        return `<div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4"><div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div><div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}${mediaHtml}</div></div>`;
     },
 
-    closeMonitor() {
-        document.getElementById('modal-monitor').classList.add('hidden-view');
-        if (this.monitorSub) {
-            this.monitorSub.unsubscribe();
-            this.monitorSub = null;
-        }
-    },
+    closeMonitor() { document.getElementById('modal-monitor').classList.add('hidden-view'); if (this.monitorSub) { this.monitorSub.unsubscribe(); this.monitorSub = null; } },
 
     async pickTicket(id) {
         try {
-            this.activeTicketId = id;
-            this.navigate('chat');
-            document.getElementById('menu-chat').classList.remove('hidden-view');
-            document.getElementById('chat-history').innerHTML = '';
-            this.switchTab('crm-info');
-            
+            this.activeTicketId = id; this.navigate('chat'); document.getElementById('menu-chat').classList.remove('hidden-view'); document.getElementById('chat-history').innerHTML = ''; this.switchTab('crm-info');
             let t = await agentAPI.getTicketDetails(id);
-            
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
-                if (myCount >= 10) {
-                    alert("Limite de 10 atendimentos simultâneos alcançado!");
-                    this.navigate('queue');
-                    return;
-                }
-                await agentAPI.reassignTicket(id, this.currentUser.id);
-                t.status = 'in_progress';
-                t.agent_id = this.currentUser.id;
-                await this.loadQueue(); 
+                if (myCount >= 10) { alert("Limite de 10 atendimentos simultâneos alcançado!"); this.navigate('queue'); return; }
+                await agentAPI.reassignTicket(id, this.currentUser.id); t.status = 'in_progress'; t.agent_id = this.currentUser.id; await this.loadQueue(); 
             }
 
-            this.renderBubbles(); 
-            this.currentCustomer = t.customers; 
-
+            this.renderBubbles(); this.currentCustomer = t.customers; 
+            
             document.getElementById('toggle-upload').checked = t.is_upload_enabled || false;
             this.updateUploadToggleUI(t.is_upload_enabled || false);
-            
-            document.getElementById('chat-header-name').innerText = t.customers?.full_name || 'Desconhecido';
-            document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
-            document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido';
-            document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail';
-            document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto';
-            document.getElementById('crm-tag2').value = t.tag2_detail || '';
 
-            this.activeAgents = await agentAPI.getActiveAgents();
-            this.populateTransferDropdowns();
-            
-            if (t.customers?.email) this.loadCustomerHistory(t.customers.email);
-            if (t.customer_id) this.loadCustomerOrders(t.customer_id);
+            // Se for email, avisa no header
+            let chText = t.channel === 'email' ? ' (E-MAIL)' : '';
+
+            document.getElementById('chat-header-name').innerText = (t.customers?.full_name || 'Desconhecido') + chText; 
+            document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`; document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto'; document.getElementById('crm-tag2').value = t.tag2_detail || '';
+            this.activeAgents = await agentAPI.getActiveAgents(); this.populateTransferDropdowns();
+            if (t.customers?.email) this.loadCustomerHistory(t.customers.email); if (t.customer_id) this.loadCustomerOrders(t.customer_id);
 
             const msgs = await agentAPI.getMessages(id);
             msgs.forEach(m => this.renderMsg(m.content, m.sender_type, m.file_url, m.file_name, m.file_type));
 
             if (this.messageSub) this.messageSub.unsubscribe();
-            
             this.messageSub = agentAPI.subscribeToMessages(id, (msg, fUrl, fName, fType) => {
                 this.renderMsg(msg, 'customer', fUrl, fName, fType);
-                
                 const tkIndex = this.activeTickets.findIndex(tk => tk.id === id);
-                if (tkIndex > -1) {
-                    this.activeTickets[tkIndex].last_sender = 'customer';
-                    this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString();
-                    this.renderBubbles();
-                }
+                if (tkIndex > -1) { this.activeTickets[tkIndex].last_sender = 'customer'; this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString(); this.renderBubbles(); }
             });
-            
-        } catch (e) {
-            console.error("Erro Crítico ao abrir chat:", e);
-            alert("Erro ao carregar os dados do chat: " + e.message);
-        }
+        } catch (e) { console.error(e); alert("Erro ao carregar dados do chat: " + e.message); }
     },
 
     renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {
         const isAgent = type === 'agent';
         let mediaHtml = '';
-        
         if (fileUrl) {
-            if (fileType && fileType.startsWith('image/')) {
-                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300 hover:opacity-80 transition-opacity"></a></div>`;
-            } else {
-                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-2 bg-black/10 p-2.5 rounded-lg text-xs font-bold hover:bg-black/20 transition-colors cursor-pointer"><span class="material-symbols-outlined text-sm">download</span> ${fileName || 'Arquivo'}</a></div>`;
-            }
+            if (fileType && fileType.startsWith('image/')) mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300 hover:opacity-80 transition-opacity"></a></div>`;
+            else mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-2 bg-black/10 p-2.5 rounded-lg text-xs font-bold hover:bg-black/20 transition-colors cursor-pointer relative z-30"><span class="material-symbols-outlined text-sm">download</span> ${fileName || 'Arquivo'}</a></div>`;
         }
-
         const area = document.getElementById('chat-history');
-        area.innerHTML += `
-            <div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full">
-                <div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 whitespace-pre-wrap'}">
-                    ${text}${mediaHtml}
-                </div>
-            </div>`;
+        area.innerHTML += `<div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 whitespace-pre-wrap'} relative z-30">${text}${mediaHtml}</div></div>`;
         area.scrollTop = area.scrollHeight;
     },
 
     async closeTicket() {
         if (!confirm("Encerrar atendimento?")) return;
-        try {
-            await agentAPI.closeTicket(this.activeTicketId, document.getElementById('crm-tag2').value);
-            this.activeTicketId = null;
-            document.getElementById('menu-chat').classList.add('hidden-view');
-            this.navigate('queue');
-            Orchestrator.findAndClaimNext();
-        } catch (error) { alert("Erro ao fechar."); }
+        try { await agentAPI.closeTicket(this.activeTicketId, document.getElementById('crm-tag2').value); this.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); this.navigate('queue'); Orchestrator.findAndClaimNext(); } catch (error) { alert("Erro ao fechar."); }
     },
 
-    switchTab(tabId) {
-        ['info', 'history', 'orders'].forEach(t => {
-            document.getElementById(`view-crm-${t}`).classList.add('hidden-view');
-            document.getElementById(`tab-${t}`).classList.remove('border-blue-600', 'text-blue-600');
-        });
-        document.getElementById(`view-crm-${tabId.replace('crm-', '')}`).classList.remove('hidden-view');
-        document.getElementById(tabId.replace('crm-', 'tab-')).classList.add('border-blue-600', 'text-blue-600');
-    },
-
+    switchTab(tabId) { ['info', 'history', 'orders'].forEach(t => { document.getElementById(`view-crm-${t}`).classList.add('hidden-view'); document.getElementById(`tab-${t}`).classList.remove('border-blue-600', 'text-blue-600'); }); document.getElementById(`view-crm-${tabId.replace('crm-', '')}`).classList.remove('hidden-view'); document.getElementById(tabId.replace('crm-', 'tab-')).classList.add('border-blue-600', 'text-blue-600'); },
     populateTransferDropdowns() {
-        const subSelect = document.getElementById('transfer-subject');
-        subSelect.innerHTML = '<option value="">➜ Para Fila (Assunto)...</option>';
-        this.allSubjects.forEach(s => subSelect.innerHTML += `<option value="${s.id}">${s.label}</option>`);
-
-        const agSelect = document.getElementById('transfer-agent');
-        agSelect.innerHTML = '<option value="">➜ Para Agente...</option>';
-        this.activeAgents.forEach(a => { if (a.id !== this.currentUser.id) agSelect.innerHTML += `<option value="${a.id}">${a.full_name} (Online)</option>`; });
+        const subSelect = document.getElementById('transfer-subject'); subSelect.innerHTML = '<option value="">➜ Para Fila (Assunto)...</option>'; this.allSubjects.forEach(s => subSelect.innerHTML += `<option value="${s.id}">${s.label}</option>`);
+        const agSelect = document.getElementById('transfer-agent'); agSelect.innerHTML = '<option value="">➜ Para Agente...</option>'; this.activeAgents.forEach(a => { if (a.id !== this.currentUser.id) agSelect.innerHTML += `<option value="${a.id}">${a.full_name} (Online)</option>`; });
     },
-
     async transferTicket() {
-        const newSub = document.getElementById('transfer-subject').value;
-        const newAg = document.getElementById('transfer-agent').value;
+        const newSub = document.getElementById('transfer-subject').value; const newAg = document.getElementById('transfer-agent').value;
         if (!newSub && !newAg) return;
-        if (confirm("Transferir chamado?")) {
-            try {
-                await agentAPI.transferTicket(this.activeTicketId, newSub, newAg, document.getElementById('crm-tag2').value);
-                this.activeTicketId = null;
-                document.getElementById('menu-chat').classList.add('hidden-view');
-                this.navigate('queue');
-                Orchestrator.findAndClaimNext();
-            } catch (e) { alert("Erro na transferência."); }
-        }
+        if (confirm("Transferir chamado?")) { try { await agentAPI.transferTicket(this.activeTicketId, newSub, newAg, document.getElementById('crm-tag2').value); this.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); this.navigate('queue'); Orchestrator.findAndClaimNext(); } catch (e) { alert("Erro na transferência."); } }
     },
-
     async loadCustomerHistory(email) {
         try {
-            const hist = await agentAPI.getCustomerHistoryByEmail(email);
-            const container = document.getElementById('history-list');
+            const hist = await agentAPI.getCustomerHistoryByEmail(email); const container = document.getElementById('history-list');
             if(hist.length === 0) { container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; return; }
-            
-            container.innerHTML = hist.map(h => `
-                <div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300">
-                    <div><div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div><div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'S/ Assunto'}</div><div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div>
-                    <button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button>
-                </div>
-            `).join('');
+            container.innerHTML = hist.map(h => `<div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300 relative z-20"><div><div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div><div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'S/ Assunto'}</div><div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`).join('');
         } catch (e) { console.error(e); }
     },
-
     async viewPastChat(ticketId, protocolNumber) {
         try {
-            const msgs = await agentAPI.getMessages(ticketId);
-            const modal = document.getElementById('modal-history');
-            const content = document.getElementById('history-chat-content');
-            document.getElementById('modal-history-protocol').innerText = `Protocolo HZ-${protocolNumber}`;
-            
-            modal.classList.remove('hidden-view');
-            if(msgs.length === 0) { content.innerHTML = '<div class="text-center text-slate-400 font-bold">Sem mensagens registradas.</div>'; return; }
-            
-            content.innerHTML = msgs.map(m => `
-                <div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full">
-                    <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${m.content}</div>
-                </div>
-            `).join('');
+            const msgs = await agentAPI.getMessages(ticketId); const modal = document.getElementById('modal-history'); const content = document.getElementById('history-chat-content');
+            document.getElementById('modal-history-protocol').innerText = `Protocolo HZ-${protocolNumber}`; modal.classList.remove('hidden-view');
+            if(msgs.length === 0) { content.innerHTML = '<div class="text-center text-slate-400 font-bold">Sem mensagens.</div>'; return; }
+            content.innerHTML = msgs.map(m => `<div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${m.content}</div></div>`).join('');
         } catch (e) { alert("Erro ao carregar conversa."); }
     },
-
     showNewOrderForm() { document.getElementById('order-form').classList.toggle('hidden-view'); },
-
     async saveOrder() {
-        const product = document.getElementById('order-product').value;
-        const qty = document.getElementById('order-qty').value;
-        const amount = document.getElementById('order-amount').value;
+        const product = document.getElementById('order-product').value; const qty = document.getElementById('order-qty').value; const amount = document.getElementById('order-amount').value;
         if(!product || !amount) return alert("Preencha Produto e Valor.");
-        try {
-            await agentAPI.createOrder({ customer_id: this.currentCustomer.id, product_name: product, quantity: parseInt(qty), amount: parseFloat(amount.replace(',', '.')) });
-            document.getElementById('order-product').value = ''; document.getElementById('order-amount').value = '';
-            document.getElementById('order-form').classList.add('hidden-view');
-            this.loadCustomerOrders(this.currentCustomer.id);
-        } catch (e) { alert("Erro ao salvar pedido."); }
+        try { await agentAPI.createOrder({ customer_id: this.currentCustomer.id, product_name: product, quantity: parseInt(qty), amount: parseFloat(amount.replace(',', '.')) }); document.getElementById('order-product').value = ''; document.getElementById('order-amount').value = ''; document.getElementById('order-form').classList.add('hidden-view'); this.loadCustomerOrders(this.currentCustomer.id); } catch (e) { alert("Erro ao salvar pedido."); }
     },
-
     async loadCustomerOrders(customerId) {
         try {
-            const orders = await agentAPI.getCustomerOrders(customerId);
-            const container = document.getElementById('order-list');
+            const orders = await agentAPI.getCustomerOrders(customerId); const container = document.getElementById('order-list');
             if(orders.length === 0) { container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum pedido registrado.</div>'; return; }
-            
-            container.innerHTML = orders.map(o => `
-                <div class="p-3 bg-white border border-dashed border-slate-300 rounded-xl flex justify-between items-center hover:bg-slate-50 transition-colors">
-                    <div><div class="text-xs font-black text-slate-800">${o.product_name}</div><div class="text-[10px] font-bold text-slate-500">${o.quantity} un • R$ ${o.amount.toFixed(2).replace('.', ',')}</div></div>
-                    <div class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">${new Date(o.created_at).toLocaleDateString()}</div>
-                </div>
-            `).join('');
+            container.innerHTML = orders.map(o => `<div class="p-3 bg-white border border-dashed border-slate-300 rounded-xl flex justify-between items-center hover:bg-slate-50 transition-colors relative z-20"><div><div class="text-xs font-black text-slate-800">${o.product_name}</div><div class="text-[10px] font-bold text-slate-500">${o.quantity} un • R$ ${o.amount.toFixed(2).replace('.', ',')}</div></div><div class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">${new Date(o.created_at).toLocaleDateString()}</div></div>`).join('');
         } catch (e) { console.error(e); }
     },
-
     async renderDashboard() {
         try {
-            const { data: tickets } = await supabase.from('tickets').select('status, rating, agent_id');
-            const { data: orders } = await supabase.from('orders').select('amount');
-            const { data: profiles } = await supabase.from('profiles').select('id, full_name');
-
-            const total = tickets.length;
-            const open = tickets.filter(t => t.status === 'open').length;
-            const inProgress = tickets.filter(t => t.status === 'in_progress').length;
-            const closed = tickets.filter(t => t.status === 'closed').length;
-            
-            const npsTickets = tickets.filter(t => t.rating !== null);
-            const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0";
-            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0);
-
-            document.getElementById('stat-total').innerText = total;
-            document.getElementById('stat-open').innerText = open;
-            document.getElementById('stat-nps').innerText = avgNps;
-            document.getElementById('stat-sales').innerText = `R$ ${totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-
-            this.updateStatusChart(open, inProgress, closed);
-            this.updateAnalystRanking(tickets, profiles);
+            const { data: tickets } = await supabase.from('tickets').select('status, rating, agent_id'); const { data: orders } = await supabase.from('orders').select('amount'); const { data: profiles } = await supabase.from('profiles').select('id, full_name');
+            const total = tickets.length; const open = tickets.filter(t => t.status === 'open').length; const inProgress = tickets.filter(t => t.status === 'in_progress').length; const closed = tickets.filter(t => t.status === 'closed').length;
+            const npsTickets = tickets.filter(t => t.rating !== null); const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0);
+            document.getElementById('stat-total').innerText = total; document.getElementById('stat-open').innerText = open; document.getElementById('stat-nps').innerText = avgNps; document.getElementById('stat-sales').innerText = `R$ ${totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            this.updateStatusChart(open, inProgress, closed); this.updateAnalystRanking(tickets, profiles);
         } catch (error) { console.error("Erro Dashboard:", error); }
     },
-
     updateStatusChart(open, inProgress, closed) {
-        const ctx = document.getElementById('chartStatus').getContext('2d');
-        if (window.myChart) window.myChart.destroy();
-        window.myChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: { labels: ['Aberto', 'Em Curso', 'Finalizados'], datasets: [{ data: [open, inProgress, closed], backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'], borderWidth: 0, hoverOffset: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } } }
-        });
+        const ctx = document.getElementById('chartStatus').getContext('2d'); if (window.myChart) window.myChart.destroy();
+        window.myChart = new Chart(ctx, { type: 'doughnut', data: { labels: ['Aberto', 'Em Curso', 'Finalizados'], datasets: [{ data: [open, inProgress, closed], backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'], borderWidth: 0, hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } } } });
     },
-
     updateAnalystRanking(tickets, profiles) {
         const container = document.getElementById('analyst-ranking');
-        const ranking = profiles.map(p => {
-            const agentTickets = tickets.filter(t => t.agent_id === p.id && t.rating !== null);
-            const avg = agentTickets.length > 0 ? (agentTickets.reduce((acc, t) => acc + t.rating, 0) / agentTickets.length).toFixed(1) : 0;
-            return { name: p.full_name, avg: parseFloat(avg) };
-        }).sort((a, b) => b.avg - a.avg);
-
+        const ranking = profiles.map(p => { const agentTickets = tickets.filter(t => t.agent_id === p.id && t.rating !== null); const avg = agentTickets.length > 0 ? (agentTickets.reduce((acc, t) => acc + t.rating, 0) / agentTickets.length).toFixed(1) : 0; return { name: p.full_name, avg: parseFloat(avg) }; }).sort((a, b) => b.avg - a.avg);
         if (ranking.length === 0) { container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">S/ Dados.</div>`; return; }
-
-        container.innerHTML = ranking.map((r, index) => {
-            const badgeColor = index === 0 ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200';
-            return `
-            <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-slate-100">
-                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div><span class="font-bold text-slate-700">${r.name}</span></div>
-                <span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg > 0 ? 'text-blue-600' : 'text-slate-400'} shadow-sm">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span>
-            </div>`;
-        }).join('');
+        container.innerHTML = ranking.map((r, index) => { const badgeColor = index === 0 ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'; return `<div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-slate-100 relative z-20"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div><span class="font-bold text-slate-700">${r.name}</span></div><span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg > 0 ? 'text-blue-600' : 'text-slate-400'} shadow-sm">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span></div>`; }).join('');
     },
-
     async loadTeam() {
-        const team = await agentAPI.getTeamProfiles();
-        const tbody = document.getElementById('team-tbody');
+        const team = await agentAPI.getTeamProfiles(); const tbody = document.getElementById('team-tbody');
         tbody.innerHTML = team.map(member => {
             let skillsHTML = '';
-            if (member.is_approved) {
-                skillsHTML = `<div class="flex flex-col gap-1">`;
-                this.allSubjects.forEach(sub => {
-                    const hasSkill = member.agent_skills.some(skill => skill.subject_id === sub.id);
-                    skillsHTML += `<label class="flex items-center gap-2 cursor-pointer w-fit"><input type="checkbox" ${hasSkill ? 'checked' : ''} onchange="agentApp.toggleSkill('${member.id}', '${sub.id}', this.checked)" class="w-4 h-4 text-blue-600"><span class="text-[10px] font-bold text-slate-600">${sub.label}</span></label>`;
-                });
-                skillsHTML += `</div>`;
-            }
-            return `<tr><td class="p-5 font-black text-slate-900">${member.full_name}</td><td class="p-5 text-xs font-bold uppercase text-slate-500">${member.role}</td><td class="p-5">${skillsHTML}</td><td class="p-5 text-right">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs">Aprovar</button>` : ''}</td></tr>`;
+            if (member.is_approved) { skillsHTML = `<div class="flex flex-col gap-1">`; this.allSubjects.forEach(sub => { const hasSkill = member.agent_skills.some(skill => skill.subject_id === sub.id); skillsHTML += `<label class="flex items-center gap-2 cursor-pointer w-fit"><input type="checkbox" ${hasSkill ? 'checked' : ''} onchange="agentApp.toggleSkill('${member.id}', '${sub.id}', this.checked)" class="w-4 h-4 text-blue-600"><span class="text-[10px] font-bold text-slate-600">${sub.label}</span></label>`; }); skillsHTML += `</div>`; }
+            return `<tr class="relative z-20"><td class="p-5 font-black text-slate-900">${member.full_name}</td><td class="p-5 text-xs font-bold uppercase text-slate-500">${member.role}</td><td class="p-5">${skillsHTML}</td><td class="p-5 text-right">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs">Aprovar</button>` : ''}</td></tr>`;
         }).join('');
     },
-
     async approveMember(id) { if(confirm("Aprovar?")) { await agentAPI.approveUser(id, 'analista'); this.loadTeam(); } },
     async toggleSkill(agentId, subjectId, isAdding) { try { await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); } catch (e) { this.loadTeam(); } }
 };

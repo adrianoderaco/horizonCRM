@@ -26,30 +26,58 @@
 
         <div class="flex-1 overflow-y-auto p-6 flex flex-col" id="app-content">
             
-            <section id="sec-register" class="space-y-6">
-                <div class="text-center">
+            <section id="sec-subjects" class="space-y-4">
+                <div class="text-center mb-6">
                     <h2 class="text-2xl font-black text-slate-900">Como podemos ajudar?</h2>
-                    <p class="text-slate-500 text-sm mt-2">Preencha os dados abaixo para falar com nossa equipe.</p>
+                    <p class="text-slate-500 text-sm mt-2">Selecione o assunto do seu atendimento.</p>
+                </div>
+                <div id="subject-list" class="flex flex-col gap-3"></div>
+            </section>
+
+            <section id="sec-channel" class="hidden-view space-y-6">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-black text-slate-900">Escolha o Canal</h2>
+                    <p class="text-slate-500 text-sm mt-2">Como prefere ser atendido?</p>
+                </div>
+                <div class="grid grid-cols-1 gap-4">
+                    <button onclick="clientApp.selectChannel('web')" class="p-6 bg-white border-2 border-slate-200 rounded-2xl hover:border-blue-600 hover:bg-blue-50 transition-all font-black text-slate-700 flex flex-col items-center gap-3">
+                        <span class="material-symbols-outlined text-4xl text-blue-600">forum</span>
+                        Chat Ao Vivo
+                    </button>
+                    <button onclick="clientApp.selectChannel('email')" class="p-6 bg-white border-2 border-slate-200 rounded-2xl hover:border-blue-600 hover:bg-blue-50 transition-all font-black text-slate-700 flex flex-col items-center gap-3">
+                        <span class="material-symbols-outlined text-4xl text-blue-600">mail</span>
+                        Atendimento via E-mail
+                    </button>
+                </div>
+                <button type="button" onclick="clientApp.navigate('subjects')" class="w-full py-4 text-slate-500 font-bold text-sm">Voltar</button>
+            </section>
+
+            <section id="sec-register" class="hidden-view space-y-6">
+                <div class="text-center">
+                    <h2 class="text-2xl font-black text-slate-900">Seus Dados</h2>
+                    <p class="text-slate-500 text-sm mt-2">Preencha para iniciar a solicitação.</p>
                 </div>
                 
                 <form id="register-form" class="space-y-4">
-                    <input type="text" id="cust-name" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Seu Nome Completo" required>
-                    
+                    <input type="text" id="cust-name" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Nome Completo" required>
                     <div class="flex flex-col sm:flex-row gap-4">
                         <input type="email" id="cust-email" class="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="E-mail" required>
-                        <input type="tel" id="cust-phone" class="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Celular / WhatsApp" required>
+                        <input type="tel" id="cust-phone" class="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Celular (WhatsApp)" required>
                     </div>
-
-                    <select id="cust-subject" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm text-slate-700 cursor-pointer" required>
-                        <option value="" disabled selected>Carregando assuntos...</option>
-                    </select>
-
-                    <textarea id="cust-message" rows="3" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm resize-none" placeholder="Descreva brevemente o que está acontecendo..." required></textarea>
+                    <textarea id="cust-message" rows="3" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm resize-none" placeholder="Descreva sua dúvida ou problema..." required></textarea>
                     
-                    <button type="submit" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 mt-2">
-                        Iniciar Atendimento <span class="material-symbols-outlined">arrow_forward</span>
+                    <button type="submit" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all flex justify-center items-center gap-2">
+                        Confirmar e Enviar <span class="material-symbols-outlined">arrow_forward</span>
                     </button>
+                    <button type="button" onclick="clientApp.navigate('channel')" class="w-full py-2 text-slate-500 font-bold text-sm">Voltar</button>
                 </form>
+            </section>
+
+            <section id="sec-success-email" class="hidden-view text-center space-y-6 flex flex-col justify-center h-full">
+                <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><span class="material-symbols-outlined text-4xl">mark_email_read</span></div>
+                <h2 class="text-2xl font-black text-slate-900">Solicitação Recebida!</h2>
+                <p class="text-slate-500 font-medium">Seu ticket foi aberto com sucesso. Nossa equipe analisará o seu caso e retornará no e-mail informado.</p>
+                <div class="text-sm font-bold text-blue-600 mt-4" id="success-protocol"></div>
             </section>
 
             <section id="sec-chat" class="hidden-view flex-1 flex flex-col">
@@ -57,7 +85,7 @@
                 
                 <form id="chat-form" class="mt-4 flex gap-2 border-t pt-4 border-slate-100 shrink-0">
                     <input type="file" id="file-input" class="hidden-view" accept="image/*,.pdf,.doc,.docx">
-                    <button type="button" id="btn-attach" onclick="document.getElementById('file-input').click()" class="hidden-view bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 flex items-center justify-center transition-colors shadow-sm" title="Anexar Arquivo">
+                    <button type="button" id="btn-attach" onclick="document.getElementById('file-input').click()" class="hidden-view bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 flex items-center justify-center transition-colors shadow-sm" title="Anexar Arquivo (Liberado)">
                         <span class="material-symbols-outlined">attach_file</span>
                     </button>
                     <input type="text" id="chat-input" class="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 outline-none font-medium focus:ring-2 focus:ring-blue-600" placeholder="Digite sua mensagem..." autocomplete="off" required>
