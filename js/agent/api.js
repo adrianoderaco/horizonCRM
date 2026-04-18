@@ -45,6 +45,18 @@ export const agentAPI = {
         return data;
     },
 
+    // FUNÇÃO NOVA PARA O DASHBOARD (Filtro por Data)
+    async getDashboardTickets(startDate, endDate) {
+        let query = supabase.from('tickets').select(`id, protocol_number, channel, created_at, closed_at, status, agent_id, rating, agent_tag1, agent_tag2, agent_notes, customers(full_name), ticket_subjects(label)`);
+        
+        if (startDate) query = query.gte('created_at', startDate + 'T00:00:00.000Z');
+        if (endDate) query = query.lte('created_at', endDate + 'T23:59:59.999Z');
+        
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
     async getTicketDetails(ticketId) {
         const { data, error } = await supabase.from('tickets')
             .select(`*, customers (*), ticket_subjects (label)`)
@@ -175,8 +187,6 @@ export const agentAPI = {
         const updates = {};
         if (maxChats !== null && maxChats !== undefined) updates.max_chats = parseInt(maxChats);
         if (maxEmails !== null && maxEmails !== undefined) updates.max_emails = parseInt(maxEmails);
-        
-        // Só tenta salvar se tiver algo pra salvar
         if (Object.keys(updates).length > 0) {
             const { error } = await supabase.from('profiles').update(updates).eq('id', agentId);
             if (error) throw error;
@@ -241,19 +251,11 @@ export const agentAPI = {
         }
     },
 
-    // FUNÇÃO BLINDADA COM FILTRO JAVASCRIPT EM VEZ DE .OR POSTGRES
     async getInternalMessages(user1, user2) {
         if (!user1 || !user2) return []; 
-        const { data, error } = await supabase.from('internal_messages')
-            .select('*')
-            .or(`sender_id.eq.${user1},receiver_id.eq.${user1}`);
-            
+        const { data, error } = await supabase.from('internal_messages').select('*').or(`sender_id.eq.${user1},receiver_id.eq.${user1}`);
         if (error) throw error;
-        
-        return data.filter(m => 
-            (m.sender_id === user1 && m.receiver_id === user2) || 
-            (m.sender_id === user2 && m.receiver_id === user1)
-        ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        return data.filter(m => (m.sender_id === user1 && m.receiver_id === user2) || (m.sender_id === user2 && m.receiver_id === user1)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     },
 
     async sendInternalMessage(senderId, receiverId, content) {

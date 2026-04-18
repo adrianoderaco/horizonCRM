@@ -19,6 +19,11 @@ const App = {
     activeTickets: [],
     systemSettings: null,
     closingTickets: new Set(),
+    
+    // DASHBOARD FILTERS
+    dashboardTickets: [],
+    allProfiles: [],
+    dashFilterAgent: null,
 
     async init() {
         window.agentApp = this; 
@@ -30,11 +35,16 @@ const App = {
             this.systemSettings = { is_orchestrator_active: false, chat_timeout_min: 10, email_timeout_hr: 24, closure_macro: "Encerrado." };
         }
 
+        // Set default dates for Dashboard
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        document.getElementById('dash-start').value = firstDay.toISOString().split('T')[0];
+        document.getElementById('dash-end').value = today.toISOString().split('T')[0];
+
         this.startLiveTimers(); 
 
         window.addEventListener('ticket-assigned', async (e) => { 
             await this.loadQueue(); 
-            // Só força abrir a tela de atendimento se o analista não estiver fazendo NADA
             if (!this.activeTicketId) {
                 this.pickTicket(e.detail.id); 
             }
@@ -52,7 +62,7 @@ const App = {
             if (this.isRegisterMode) {
                 try { 
                     await agentAPI.register(document.getElementById('reg-name').value, email, pass); 
-                    alert("Aguarde aprovação do gestor."); 
+                    alert("Aguarde aprovação."); 
                     this.toggleAuthMode(); 
                 } catch (err) { 
                     alert("Erro: " + err.message); 
@@ -90,7 +100,7 @@ const App = {
                     
                     const toggleRouteBtn = document.getElementById('toggle-routing');
                     if (toggleRouteBtn) {
-                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active === true;
+                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active;
                     }
                     this.renderDashboard(); 
                 }
@@ -122,7 +132,7 @@ const App = {
                     Orchestrator.updateSettings(newCfg);
                     if (profile.role === 'gestor') {
                         const tg = document.getElementById('toggle-routing');
-                        if (tg) tg.checked = newCfg.is_orchestrator_active === true;
+                        if (tg) tg.checked = newCfg.is_orchestrator_active;
                     }
                 });
 
@@ -186,7 +196,7 @@ const App = {
             try { 
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 this.updateLocalBubble();
-                Orchestrator.findAndClaimNext(); // Libera espaço no orquestrador
+                Orchestrator.findAndClaimNext(); 
             } catch(err) { 
                 alert("Erro ao enviar mensagem."); 
             }
@@ -255,10 +265,9 @@ const App = {
     async toggleGlobalOrchestrator(isActive) {
         try {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
-            console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`);
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
+            alert("Erro ao alterar Orquestrador.");
         }
     },
 
@@ -289,7 +298,7 @@ const App = {
                         this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); 
                     }
                 } catch(err) { 
-                    alert("Erro no upload do arquivo."); 
+                    alert("Erro no upload."); 
                 } finally { 
                     btnSend.innerHTML = origText; 
                     btnSend.disabled = false; 
@@ -439,7 +448,6 @@ const App = {
 
     async executeAutoClose(ticket) {
         try {
-            console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
             let msg = this.systemSettings.closure_macro;
             msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
@@ -455,7 +463,7 @@ const App = {
             }
             this.loadQueue();
         } catch(e) { 
-            console.error("Falha na macro de encerramento:", e); 
+            console.error("Falha macro:", e); 
         } finally { 
             this.closingTickets.delete(ticket.id); 
         }
@@ -521,7 +529,7 @@ const App = {
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
             this.renderSettingsTags();
 
-        } catch(e) { console.error("Erro na tela de UI de configurações", e); }
+        } catch(e) { console.error("Erro UI de configurações", e); }
     },
 
     renderSettingsTags() {
@@ -665,8 +673,6 @@ const App = {
                 const inProg = t.status === 'in_progress';
                 const isMine = t.agent_id === this.currentUser.id;
                 
-                const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
-
                 let statusHtml = `
                 <div class="flex flex-col gap-1 items-start">
                     ${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}
@@ -728,8 +734,33 @@ const App = {
         content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando a conversa...</div>';
         
         try {
+            const ticket = await agentAPI.getTicketDetails(ticketId); 
             const msgs = await agentAPI.getMessages(ticketId);
-            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
+            
+            let html = `
+            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 relative z-20">
+                <h4 class="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">summarize</span> Resumo do Atendimento</h4>
+                <div class="grid grid-cols-2 gap-4 text-xs mb-3">
+                    <div>
+                        <div class="font-bold text-blue-900 mb-1">Motivo (Tag 1):</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não classificado'}</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-blue-900 mb-1">Submotivo (Tag 2):</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não classificado'}</div>
+                    </div>
+                </div>
+                <div class="text-xs">
+                    <div class="font-bold text-blue-900 mb-1">Observações do Analista:</div>
+                    <div class="text-blue-800 italic bg-white/60 border border-blue-100 p-3 rounded-lg">${ticket.agent_notes || 'Nenhuma observação registrada.'}</div>
+                </div>
+            </div>
+            <div class="h-px bg-slate-200 mb-4"></div>
+            `;
+            
+            html += msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
+            
+            content.innerHTML = html;
             content.scrollTop = content.scrollHeight;
             
             if (this.monitorSub) this.monitorSub.unsubscribe();
@@ -739,7 +770,7 @@ const App = {
                 content.scrollTop = content.scrollHeight; 
             });
         } catch(e) { 
-            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão ao carregar conversa.</div>'; 
+            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão.</div>'; 
         }
     },
 
@@ -816,7 +847,6 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
-            // TAGS: Preenche os dropdowns de Tag 1
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
@@ -942,7 +972,7 @@ const App = {
         const notes = document.getElementById('crm-notes').value.trim();
 
         if (!tag1 || !tag2 || !notes) {
-            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações do Atendimento.");
+            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações.");
             return;
         }
 
@@ -1006,7 +1036,7 @@ const App = {
             const hist = await agentAPI.getCustomerHistoryByEmail(email); 
             const container = document.getElementById('history-list');
             if(hist.length === 0) { 
-                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior encontrado.</div>'; 
+                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; 
                 return; 
             }
             
@@ -1031,6 +1061,7 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
+    // AQUI ESTÁ O MODAL DE HISTÓRICO COM AS TAGS E NOTAS
     async viewPastChat(ticketId, protocolNumber) {
         try {
             const ticket = await agentAPI.getTicketDetails(ticketId); 
@@ -1047,11 +1078,11 @@ const App = {
                 <div class="grid grid-cols-2 gap-4 text-xs mb-3">
                     <div>
                         <div class="font-bold text-blue-900 mb-1">Motivo (Tag 1):</div>
-                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não informado'}</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não classificado'}</div>
                     </div>
                     <div>
                         <div class="font-bold text-blue-900 mb-1">Submotivo (Tag 2):</div>
-                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não informado'}</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não classificado'}</div>
                     </div>
                 </div>
                 <div class="text-xs">
@@ -1097,7 +1128,7 @@ const App = {
             document.getElementById('order-form').classList.add('hidden-view'); 
             this.loadCustomerOrders(this.currentCustomer.id); 
         } catch (e) { 
-            alert("Erro ao tentar salvar o pedido no CRM."); 
+            alert("Erro ao tentar salvar o pedido."); 
         }
     },
 
@@ -1123,42 +1154,57 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
+    // ==========================================
+    // DASHBOARD & RELATÓRIOS (Atualizado com Data e Tabela)
+    // ==========================================
     async renderDashboard() {
         try {
-            const { data: tickets } = await agentAPI.getPendingTickets(); 
+            const startDate = document.getElementById('dash-start').value;
+            const endDate = document.getElementById('dash-end').value;
+            
+            const btnFiltro = event?.target?.closest('button');
+            if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined animate-spin text-[14px]">refresh</span> Buscando...`;
+
+            // Busca os dados filtrados por data
+            this.dashboardTickets = await agentAPI.getDashboardTickets(startDate, endDate); 
+            this.allProfiles = await agentAPI.getTeamProfiles();
+            
             const { data: orders } = await supabase.from('orders').select('amount'); 
-            const { data: profiles } = await supabase.from('profiles').select('id, full_name');
             
+            const tickets = this.dashboardTickets;
             const total = tickets.length; 
-            const open = tickets.filter(t => t.status === 'open').length; 
-            const inProgress = tickets.filter(t => t.status === 'in_progress').length; 
-            const closed = tickets.filter(t => t.status === 'closed').length;
-            const npsTickets = tickets.filter(t => t.rating !== null); 
+            const open = tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length; 
+            const closedTickets = tickets.filter(t => t.status === 'closed');
+            const closed = closedTickets.length;
             
+            const npsTickets = closedTickets.filter(t => t.rating !== null); 
             const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; 
-            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0);
+            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0); // Vendas poderia filtrar data também, mas mantive geral por enquanto.
             
             document.getElementById('stat-total').innerText = total; 
             document.getElementById('stat-open').innerText = open; 
             document.getElementById('stat-nps').innerText = avgNps; 
             document.getElementById('stat-sales').innerText = `R$ ${totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
             
-            this.updateStatusChart(open, inProgress, closed); 
-            this.updateAnalystRanking(tickets, profiles);
+            this.updateStatusChart(open, closed); 
+            this.updateAnalystRanking(closedTickets, this.allProfiles);
+            this.renderClosedCasesTable(this.dashboardTickets, this.allProfiles);
+
+            if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar`;
         } catch (error) { console.error("Erro no Dashboard Executivo:", error); }
     },
 
-    updateStatusChart(open, inProgress, closed) {
+    updateStatusChart(open, closed) {
         const ctx = document.getElementById('chartStatus').getContext('2d'); 
         if (window.myChart) window.myChart.destroy();
         
         window.myChart = new Chart(ctx, { 
             type: 'doughnut', 
             data: { 
-                labels: ['Aberto', 'Em Curso', 'Finalizados'], 
+                labels: ['Em Aberto/Curso', 'Finalizados'], 
                 datasets: [{ 
-                    data: [open, inProgress, closed], 
-                    backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'], 
+                    data: [open, closed], 
+                    backgroundColor: ['#3b82f6', '#10b981'], 
                     borderWidth: 0, 
                     hoverOffset: 4 
                 }] 
@@ -1174,23 +1220,24 @@ const App = {
         });
     },
 
-    updateAnalystRanking(tickets, profiles) {
+    updateAnalystRanking(closedTickets, profiles) {
         const container = document.getElementById('analyst-ranking');
         const ranking = profiles.map(p => { 
-            const agentTickets = tickets.filter(t => t.agent_id === p.id && t.rating !== null); 
+            const agentTickets = closedTickets.filter(t => t.agent_id === p.id && t.rating !== null); 
             const avg = agentTickets.length > 0 ? (agentTickets.reduce((acc, t) => acc + t.rating, 0) / agentTickets.length).toFixed(1) : 0; 
-            return { name: p.full_name, avg: parseFloat(avg) }; 
-        }).sort((a, b) => b.avg - a.avg);
+            return { id: p.id, name: p.full_name, avg: parseFloat(avg) }; 
+        }).sort((a, b) => b.avg - a.avg).filter(r => r.avg > 0);
         
         if (ranking.length === 0) { 
-            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados de NPS para ranquear.</div>`; 
+            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados de NPS para ranquear no período.</div>`; 
             return; 
         }
         
         container.innerHTML = ranking.map((r, index) => { 
             const badgeColor = index === 0 ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'; 
+            const isSelected = this.dashFilterAgent === r.id;
             return `
-            <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-slate-100 relative z-20">
+            <div onclick="agentApp.filterDashboardByAgent('${r.id}', '${r.name}')" class="cursor-pointer flex items-center justify-between p-4 bg-slate-50 border ${isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-100'} rounded-2xl transition-all hover:bg-blue-50 relative z-20">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div>
                     <span class="font-bold text-slate-700">${r.name}</span>
@@ -1200,6 +1247,120 @@ const App = {
         }).join('');
     },
 
+    filterDashboardByAgent(agentId, agentName) {
+        if (this.dashFilterAgent === agentId || !agentId) {
+            this.dashFilterAgent = null; // Remove filtro se clicar no mesmo
+            document.getElementById('active-filter-badge').classList.add('hidden-view');
+        } else {
+            this.dashFilterAgent = agentId;
+            document.getElementById('active-filter-badge').classList.remove('hidden-view');
+            document.getElementById('active-filter-name').innerText = agentName;
+        }
+        // Atualiza apenas a tabela e o ranking (visualmente)
+        this.updateAnalystRanking(this.dashboardTickets.filter(t => t.status === 'closed'), this.allProfiles);
+        this.renderClosedCasesTable(this.dashboardTickets, this.allProfiles);
+    },
+
+    renderClosedCasesTable(tickets, profiles) {
+        const container = document.getElementById('closed-cases-tbody');
+        const closedTickets = tickets.filter(t => t.status === 'closed');
+        
+        const filteredTickets = closedTickets.filter(t => {
+            if (this.dashFilterAgent) return t.agent_id === this.dashFilterAgent;
+            return true;
+        });
+
+        if (filteredTickets.length === 0) {
+            container.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400 font-medium">Nenhum caso fechado no período.</td></tr>`;
+            return;
+        }
+
+        container.innerHTML = filteredTickets.map(t => {
+            const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema/Desconhecido';
+            
+            // Cálculo de Tempo (Do created_at até o closed_at)
+            const created = new Date(t.created_at);
+            const closed = new Date(t.closed_at);
+            const diffMs = closed - created;
+            const hrs = Math.floor(diffMs / 3600000);
+            const mins = Math.floor((diffMs % 3600000) / 60000);
+            let tempoStr = `${mins}m`;
+            if (hrs > 0) tempoStr = `${hrs}h ${mins}m`;
+
+            return `
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-4 font-black text-slate-900 text-xs">HZ-${t.protocol_number}</td>
+                <td class="p-4 text-xs">
+                    <div class="font-bold text-slate-800 truncate max-w-[150px]">${t.customers?.full_name || 'Cliente'}</div>
+                    <div class="text-[10px] text-slate-500 truncate max-w-[150px]">${t.ticket_subjects?.label || 'Sem Assunto Inicial'}</div>
+                </td>
+                <td class="p-4 text-xs">
+                    <div class="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded w-max mb-1 text-[10px] truncate max-w-[150px]" title="${t.agent_tag1}">${t.agent_tag1 || 'Não Tagueado'}</div>
+                    <div class="font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded w-max text-[10px] truncate max-w-[150px]" title="${t.agent_tag2}">${t.agent_tag2 || 'Não Tagueado'}</div>
+                </td>
+                <td class="p-4 font-bold text-slate-700 text-xs">${agentName}</td>
+                <td class="p-4 font-bold text-slate-600 text-xs">${tempoStr}</td>
+                <td class="p-4 text-center text-xs font-black ${t.rating >= 9 ? 'text-green-600' : (t.rating >= 7 ? 'text-amber-500' : (t.rating ? 'text-red-500' : 'text-slate-300'))}">${t.rating || '-'}</td>
+                <td class="p-4 text-right">
+                    <button onclick="agentApp.viewPastChat('${t.id}', '${t.protocol_number}')" class="bg-slate-100 text-slate-500 p-2 rounded-lg hover:bg-blue-100 hover:text-blue-600 transition-colors" title="Ver Histórico Completo">
+                        <span class="material-symbols-outlined text-[16px]">visibility</span>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    },
+
+    exportCSV() {
+        if (!this.dashboardTickets || this.dashboardTickets.length === 0) {
+            alert("Não há dados para exportar no período selecionado.");
+            return;
+        }
+        
+        const BOM = "\uFEFF"; // Garante UTF-8 no Excel
+        let csvContent = BOM + "Protocolo;Canal;Data Criacao;Data Fechamento;Tempo Total (Minutos);Cliente;Email Cliente;Motivo Original;Tag 1 (Motivo);Tag 2 (Submotivo);Observacoes (Agente);Agente;Nota NPS\n";
+        
+        this.dashboardTickets.filter(t => t.status === 'closed').forEach(t => {
+            const agentName = this.allProfiles.find(p => p.id === t.agent_id)?.full_name || 'Desconhecido';
+            const created = new Date(t.created_at);
+            const closed = new Date(t.closed_at);
+            const diffMins = Math.floor((closed - created) / 60000);
+            
+            // Limpa as aspas e quebras de linha para não quebrar o CSV
+            const safeNotes = t.agent_notes ? t.agent_notes.replace(/"/g, '""').replace(/\n/g, ' ') : '';
+            
+            const row = [
+                `HZ-${t.protocol_number}`,
+                t.channel,
+                created.toLocaleString('pt-BR'),
+                closed.toLocaleString('pt-BR'),
+                diffMins,
+                t.customers?.full_name || '',
+                t.customers?.email || '',
+                t.ticket_subjects?.label || '',
+                t.agent_tag1 || '',
+                t.agent_tag2 || '',
+                `"${safeNotes}"`,
+                agentName,
+                t.rating || ''
+            ].join(';');
+            
+            csvContent += row + "\n";
+        });
+
+        // Dispara o download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `horizon_relatorio_fechados_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    },
+
+    // ==========================================
+    // GESTÃO DE EQUIPE E CHAT INTERNO (GESTOR)
+    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 
