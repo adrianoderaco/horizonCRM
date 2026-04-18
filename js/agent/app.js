@@ -23,6 +23,8 @@ const App = {
     // DASHBOARD & TEAM FILTERS
     dashboardTickets: [],
     allProfiles: [],
+    allTeamProfiles: [],
+    allTeamLogs: [],
     dashFilterAgent: null,
     teamSearchQuery: "",
 
@@ -47,8 +49,10 @@ const App = {
 
         const today = new Date();
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-        document.getElementById('dash-start').value = firstDay.toISOString().split('T')[0];
-        document.getElementById('dash-end').value = today.toISOString().split('T')[0];
+        const dashStart = document.getElementById('dash-start');
+        const dashEnd = document.getElementById('dash-end');
+        if(dashStart) dashStart.value = firstDay.toISOString().split('T')[0];
+        if(dashEnd) dashEnd.value = today.toISOString().split('T')[0];
 
         this.startLiveTimers(); 
 
@@ -59,7 +63,7 @@ const App = {
             }
         });
 
-        document.getElementById('login-form').addEventListener('submit', async (e) => {
+        document.getElementById('login-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login'); 
             const originalText = btn.innerHTML;
@@ -111,7 +115,7 @@ const App = {
                     if (toggleRouteBtn) {
                         toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active;
                     }
-                    this.renderDashboard(); 
+                    await this.renderDashboard(); 
                 }
                 
                 const statusSelect = document.getElementById('agent-status-select');
@@ -123,16 +127,16 @@ const App = {
 
                 await this.loadQueue();
 
-                agentAPI.subscribeToQueue(() => {
-                    this.loadQueue();
+                agentAPI.subscribeToQueue(async () => {
+                    await this.loadQueue();
                     if (this.currentUser && this.currentUser.status === 'online') {
                         Orchestrator.findAndClaimNext();
                     }
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
-                        this.renderDashboard();
+                        await this.renderDashboard();
                     }
                     if (document.getElementById('sec-team') && !document.getElementById('sec-team').classList.contains('hidden-view')) {
-                        this.loadTeam();
+                        await this.loadTeam();
                     }
                 });
 
@@ -145,13 +149,13 @@ const App = {
                     }
                 });
 
-                agentAPI.subscribeToProfiles(() => {
+                agentAPI.subscribeToProfiles(async () => {
                     if (!document.getElementById('sec-team').classList.contains('hidden-view')) {
-                        this.loadTeam();
+                        await this.loadTeam();
                     }
                 });
 
-                agentAPI.subscribeToMyProfile(this.currentUser.id, (newProfile) => {
+                agentAPI.subscribeToMyProfile(this.currentUser.id, async (newProfile) => {
                     if (newProfile.status !== this.currentUser.status) {
                         this.currentUser.status = newProfile.status;
                         const sel = document.getElementById('agent-status-select');
@@ -163,10 +167,10 @@ const App = {
                             document.getElementById('menu-chat').classList.add('hidden-view');
                             this.navigate('queue');
                             alert("Atenção: Seu status foi alterado para " + newProfile.status.toUpperCase() + " pelo Gestor.");
-                            this.loadQueue();
+                            await this.loadQueue();
                         } else {
                             Orchestrator.setStatus(true);
-                            this.loadQueue();
+                            await this.loadQueue();
                         }
                     }
                 });
@@ -228,13 +232,13 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 input.value = ''; 
                 
-                await agentAPI.closeTicket(this.activeTicketId, '', '', 'E-mail respondido (Aguardando cliente)');
+                await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido', '', 'Aguardando cliente');
                 
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
                 this.activeTicketId = null;
                 document.getElementById('menu-chat').classList.add('hidden-view');
                 this.navigate('queue');
-                this.loadQueue();
+                await this.loadQueue();
                 Orchestrator.findAndClaimNext();
 
             } catch(err) { 
@@ -276,7 +280,7 @@ const App = {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador.");
+            alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
         }
     },
 
@@ -340,10 +344,10 @@ const App = {
                 this.activeTicketId = null;
                 document.getElementById('menu-chat').classList.add('hidden-view');
                 this.navigate('queue');
-                this.loadQueue();
+                await this.loadQueue();
             } else {
                 Orchestrator.setStatus(true);
-                this.loadQueue();
+                await this.loadQueue();
             }
         } catch (e) { 
             alert("Erro ao mudar o status."); 
@@ -357,7 +361,7 @@ const App = {
             if (newStatus !== 'online') {
                 await agentAPI.releaseMyTickets(agentId);
             }
-            this.loadTeam();
+            await this.loadTeam();
         } catch(e) { 
             alert("Erro ao alterar status do agente."); 
         }
@@ -507,7 +511,7 @@ const App = {
                 document.getElementById('menu-chat').classList.add('hidden-view'); 
                 this.navigate('queue');
             }
-            this.loadQueue();
+            await this.loadQueue();
         } catch(e) { 
             console.error("Falha na macro de encerramento:", e); 
         } finally { 
@@ -704,74 +708,78 @@ const App = {
     },
 
     async loadQueue() {
-        this.activeTickets = await agentAPI.getPendingTickets();
-        const isGestor = this.currentUser.role === 'gestor';
-        const gestorView = document.getElementById('queue-gestor-view');
-        const agentView = document.getElementById('queue-agent-view');
-        const countEl = document.getElementById('queue-count');
-        const tbody = document.getElementById('queue-tbody');
+        try {
+            this.activeTickets = await agentAPI.getPendingTickets();
+            const isGestor = this.currentUser.role === 'gestor';
+            const gestorView = document.getElementById('queue-gestor-view');
+            const agentView = document.getElementById('queue-agent-view');
+            const countEl = document.getElementById('queue-count');
+            const tbody = document.getElementById('queue-tbody');
 
-        this.renderBubbles();
+            this.renderBubbles();
 
-        if (isGestor) {
-            gestorView.classList.remove('hidden-view');
-            agentView.classList.add('hidden-view');
-            
-            const tickets = this.activeTickets;
-            if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
-            
-            if (tickets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket na fila no momento.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = tickets.map(t => {
-                const inProg = t.status === 'in_progress';
-                const isMine = t.agent_id === this.currentUser.id;
+            if (isGestor) {
+                gestorView.classList.remove('hidden-view');
+                agentView.classList.add('hidden-view');
                 
-                const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
-
-                let statusHtml = `
-                <div class="flex flex-col gap-1 items-start">
-                    ${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}
-                    <span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span>
-                </div>`;
+                const tickets = this.activeTickets;
+                if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
                 
-                let chBadge = t.channel === 'email' 
-                    ? `<span class="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">mail</span> E-MAIL</span>` 
-                    : `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">forum</span> CHAT</span>`;
+                if (tickets.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket na fila no momento.</td></tr>`;
+                    return;
+                }
 
-                let agentDisplay = `
-                <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px] relative z-30">
-                    ${!t.agent_id ? '<option value="" selected>Na Fila (Aguardando)</option>' : '<option value="">Devolver para Fila</option>'}
-                    ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name}</option>`).join('')}
-                </select>`;
-                
-                let actionBtn = inProg && !isMine 
-                    ? `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full relative z-30"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>` 
-                    : `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all relative z-30">Atender</button>`;
+                tbody.innerHTML = tickets.map(t => {
+                    const inProg = t.status === 'in_progress';
+                    const isMine = t.agent_id === this.currentUser.id;
+                    
+                    const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
 
-                return `
-                <tr class="hover:bg-slate-50 transition-colors relative z-20">
-                    <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} ${chBadge}</td>
-                    <td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td>
-                    <td class="p-5">${statusHtml}</td>
-                    <td class="p-5 text-right w-32">${actionBtn}</td>
-                </tr>`;
-            }).join('');
-        } else {
-            gestorView.classList.add('hidden-view');
-            agentView.classList.remove('hidden-view');
-            
-            const myTickets = this.activeTickets.filter(t => t.agent_id === this.currentUser.id && t.status === 'in_progress');
-            if(countEl) countEl.innerText = `${myTickets.length} tickets ativos`;
-            
-            const msgEl = agentView.querySelector('p');
-            if (this.currentUser.status !== 'online') {
-                msgEl.innerHTML = `Você está <strong class="uppercase">${this.currentUser.status}</strong>.<br>Mude para ONLINE para receber chamados da fila.`;
+                    let statusHtml = `
+                    <div class="flex flex-col gap-1 items-start">
+                        ${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}
+                        <span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span>
+                    </div>`;
+                    
+                    let chBadge = t.channel === 'email' 
+                        ? `<span class="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">mail</span> E-MAIL</span>` 
+                        : `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">forum</span> CHAT</span>`;
+
+                    let agentDisplay = `
+                    <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px] relative z-30">
+                        ${!t.agent_id ? '<option value="" selected>Na Fila (Aguardando)</option>' : '<option value="">Devolver para Fila</option>'}
+                        ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name}</option>`).join('')}
+                    </select>`;
+                    
+                    let actionBtn = inProg && !isMine 
+                        ? `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full relative z-30"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>` 
+                        : `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all relative z-30">Atender</button>`;
+
+                    return `
+                    <tr class="hover:bg-slate-50 transition-colors relative z-20">
+                        <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} ${chBadge}</td>
+                        <td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td>
+                        <td class="p-5">${statusHtml}</td>
+                        <td class="p-5 text-right w-32">${actionBtn}</td>
+                    </tr>`;
+                }).join('');
             } else {
-                msgEl.innerHTML = `O Orquestrador enviará novos chamados automaticamente.<br>Fique atento às bolhas no cabeçalho da sua tela.`;
+                gestorView.classList.add('hidden-view');
+                agentView.classList.remove('hidden-view');
+                
+                const myTickets = this.activeTickets.filter(t => t.agent_id === this.currentUser.id && t.status === 'in_progress');
+                if(countEl) countEl.innerText = `${myTickets.length} tickets ativos`;
+                
+                const msgEl = agentView.querySelector('p');
+                if (this.currentUser.status !== 'online') {
+                    msgEl.innerHTML = `Você está <strong class="uppercase">${this.currentUser.status}</strong>.<br>Mude para ONLINE para receber chamados da fila.`;
+                } else {
+                    msgEl.innerHTML = `O Orquestrador enviará novos chamados automaticamente.<br>Fique atento às bolhas no cabeçalho da sua tela.`;
+                }
             }
+        } catch (e) {
+            console.error("Falha ao renderizar fila:", e);
         }
     },
 
@@ -779,7 +787,7 @@ const App = {
         if(confirm("Deseja alterar o dono deste chamado?")) { 
             await agentAPI.reassignTicket(ticketId, newAgentId); 
         } else { 
-            this.loadQueue(); 
+            await this.loadQueue(); 
         } 
     },
 
@@ -828,7 +836,7 @@ const App = {
                 content.scrollTop = content.scrollHeight; 
             });
         } catch(e) { 
-            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão.</div>'; 
+            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão ao carregar conversa.</div>'; 
         }
     },
 
@@ -1212,9 +1220,6 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // ==========================================
-    // DASHBOARD & RELATÓRIOS (Atualizado com TME/TMA e Filtro de Equipes)
-    // ==========================================
     async renderDashboard() {
         try {
             const startDate = document.getElementById('dash-start').value;
@@ -1227,7 +1232,6 @@ const App = {
             this.dashboardTickets = await agentAPI.getDashboardTickets(startDate, endDate); 
             this.allProfiles = await agentAPI.getTeamProfiles();
             
-            // Popula os grupos do filtro (apenas uma vez)
             const groupSelect = document.getElementById('dash-filter-group');
             if (groupSelect.options.length === 1) {
                 const uniqueGroups = [...new Set(this.allProfiles.map(p => p.team_group).filter(Boolean))];
@@ -1236,7 +1240,6 @@ const App = {
 
             const { data: orders } = await supabase.from('orders').select('amount'); 
             
-            // Filtro de Dados
             let tickets = this.dashboardTickets;
             if (groupFilter) {
                 const groupAgentsIds = this.allProfiles.filter(p => p.team_group === groupFilter).map(p => p.id);
@@ -1255,7 +1258,6 @@ const App = {
             const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; 
             const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0); 
             
-            // Cálculo de Tempo Médio de Espera (TME) e Tempo Médio de Atendimento (TMA)
             let totalWaitMs = 0;
             let waitCount = 0;
             let totalHandleMs = 0;
@@ -1263,11 +1265,9 @@ const App = {
 
             closedTickets.forEach(t => {
                 if (t.assigned_at) {
-                    // TME = assigned_at - created_at
                     const waitMs = new Date(t.assigned_at) - new Date(t.created_at);
                     if (waitMs >= 0) { totalWaitMs += waitMs; waitCount++; }
                     
-                    // TMA = closed_at - assigned_at
                     const handleMs = new Date(t.closed_at) - new Date(t.assigned_at);
                     if (handleMs >= 0) { totalHandleMs += handleMs; handleCount++; }
                 }
@@ -1395,22 +1395,27 @@ const App = {
     renderClosedCasesTable(tickets, profiles) {
         const container = document.getElementById('closed-cases-tbody');
         const closedTickets = tickets.filter(t => t.status === 'closed');
+        
+        const filteredTickets = closedTickets.filter(t => {
+            if (this.dashFilterAgent) return t.agent_id === this.dashFilterAgent;
+            return true;
+        });
 
-        if (closedTickets.length === 0) {
+        if (filteredTickets.length === 0) {
             container.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400 font-medium">Nenhum caso fechado no período.</td></tr>`;
             return;
         }
 
-        container.innerHTML = closedTickets.map(t => {
-            const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema Automático';
+        container.innerHTML = filteredTickets.map(t => {
+            const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema/Desconhecido';
             
-            let tempoStr = '-';
-            if(t.assigned_at) {
-                const diffMs = new Date(t.closed_at) - new Date(t.assigned_at);
-                const hrs = Math.floor(diffMs / 3600000);
-                const mins = Math.floor((diffMs % 3600000) / 60000);
-                tempoStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-            }
+            const created = new Date(t.created_at);
+            const closed = new Date(t.closed_at);
+            const diffMs = closed - created;
+            const hrs = Math.floor(diffMs / 3600000);
+            const mins = Math.floor((diffMs % 3600000) / 60000);
+            let tempoStr = `${mins}m`;
+            if (hrs > 0) tempoStr = `${hrs}h ${mins}m`;
 
             return `
             <tr class="hover:bg-slate-50 transition-colors">
@@ -1486,18 +1491,18 @@ const App = {
         document.body.removeChild(link);
     },
 
-    // ==========================================
-    // GESTÃO DE EQUIPE (Atualizado com Busca e Grupos)
-    // ==========================================
     async loadTeam() {
-        const team = await agentAPI.getTeamProfiles(); 
-        const logs = await agentAPI.getAgentLogsToday(); 
-        
-        // Armazena na memória para filtrar
-        this.allTeamProfiles = team;
-        this.allTeamLogs = logs;
-        
-        this.renderTeamTable();
+        try {
+            const team = await agentAPI.getTeamProfiles(); 
+            const logs = await agentAPI.getAgentLogsToday(); 
+            
+            this.allTeamProfiles = team;
+            this.allTeamLogs = logs;
+            
+            this.renderTeamTable();
+        } catch (e) {
+            console.error("Falha ao carregar equipe:", e);
+        }
     },
 
     filterTeamTable() {
@@ -1584,8 +1589,7 @@ const App = {
                 ? `<button onclick="agentApp.openInternalChat('${member.id}', '${member.full_name}')" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all flex items-center justify-center w-full gap-1"><span class="material-symbols-outlined text-[12px]">forum</span> Falar c/ Agente</button>` 
                 : '';
             
-            // Controle de Grupo
-            const groupInput = `<input type="text" value="${member.team_group || 'Geral'}" onchange="agentApp.updateAgentGroup('${member.id}', this.value)" class="mt-2 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded p-1 w-full" placeholder="Grupo da Equipe...">`;
+            const groupInput = `<input type="text" value="${member.team_group || 'Geral'}" onchange="agentApp.updateAgentGroup('${member.id}', this.value)" class="mt-2 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded p-1 w-full outline-none focus:border-blue-500" placeholder="Grupo/Equipe">`;
 
             return `
             <tr class="relative z-20 hover:bg-slate-50 transition-colors">
