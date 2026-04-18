@@ -3,123 +3,67 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Horizon Support | Atendimento ao Cliente</title>
+    <title>Horizon CRM - Atendimento</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <style>
-        body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; color: #191c1d; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; }
         .hidden-view { display: none !important; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #e1e3e4; border-radius: 10px; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
     </style>
 </head>
-<body class="antialiased min-h-screen flex flex-col">
+<body class="antialiased text-slate-800 flex items-center justify-center min-h-screen p-4">
 
-    <header class="w-full bg-white border-b border-gray-200 p-4 flex justify-between items-center shrink-0 shadow-sm z-10">
-        <div class="flex items-center gap-2 font-black text-blue-700 text-xl tracking-tight">
-            <span class="material-symbols-outlined">cloud</span> Horizon
-        </div>
-    </header>
-
-    <main class="flex-1 flex justify-center items-center p-4 sm:p-8 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+    <main class="w-full max-w-lg bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 flex flex-col h-[85vh]">
         
-        <section id="view-contact" class="max-w-2xl w-full space-y-6 bg-white rounded-3xl p-8 md:p-12 shadow-xl border border-gray-100">
-            <div class="text-center mb-8">
-                <h2 class="text-3xl font-extrabold tracking-tight mb-2 text-slate-900">Como podemos ajudar?</h2>
-                <p class="text-slate-500 font-medium">Preencha os dados abaixo para gerarmos seu protocolo.</p>
-            </div>
+        <header class="bg-blue-600 p-6 text-white shrink-0 text-center relative">
+            <h1 class="text-2xl font-black flex items-center justify-center gap-2"><span class="material-symbols-outlined">cloud</span> Horizon CRM</h1>
+            <p class="text-blue-200 text-sm font-medium mt-1" id="header-desc">Central de Atendimento</p>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-6 flex flex-col" id="app-content">
             
-            <form id="ticket-form" class="space-y-5">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Nome Completo *</label>
-                        <input id="client-name" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Seu nome" type="text" required />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">E-mail *</label>
-                        <input id="client-email" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="seu@email.com" type="email" required />
-                    </div>
-                </div>
+            <section id="sec-subjects" class="space-y-4">
+                <h2 class="text-xl font-black text-slate-900 mb-6 text-center">Como podemos ajudar hoje?</h2>
+                <div id="subject-list" class="flex flex-col gap-3"></div>
+            </section>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Assunto do Contato *</label>
-                        <select id="ticket-subject" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none font-medium text-slate-700" required>
-                            <option value="">Carregando assuntos...</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Número do Pedido</label>
-                        <input id="client-order" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none" placeholder="Opcional" type="text" />
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Descreva o problema *</label>
-                    <textarea id="client-message" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none resize-none" rows="3" placeholder="Detalhes..." required></textarea>
-                </div>
-
-                <div class="pt-4 flex flex-col sm:flex-row gap-4">
-                    <button type="button" id="btn-chat" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white h-14 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200">
-                        <span class="material-symbols-outlined">forum</span> Iniciar Chat
-                    </button>
-                    <button type="button" id="btn-email" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white h-14 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-200">
-                        <span class="material-symbols-outlined">mail</span> Enviar E-mail
-                    </button>
-                </div>
-            </form>
-        </section>
-
-        <section id="view-success" class="hidden-view max-w-md w-full bg-white rounded-3xl p-12 text-center shadow-xl border border-gray-100">
-            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6"><span class="material-symbols-outlined text-4xl">check_circle</span></div>
-            <h2 class="text-3xl font-extrabold tracking-tight mb-2">Ticket Aberto!</h2>
-            <p class="text-slate-500 mb-6">Sua solicitação foi registrada com sucesso. Acompanhe pelo protocolo:</p>
-            <div class="bg-slate-100 p-4 rounded-xl font-black text-2xl tracking-widest text-slate-800 mb-6" id="success-protocol">HZ-0000</div>
-            <button onclick="location.reload()" class="font-bold text-blue-600 hover:underline">Voltar ao início</button>
-        </section>
-
-        <section id="view-chat" class="hidden-view w-full max-w-3xl h-[85vh] bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden relative">
-            <header class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-md"><span class="material-symbols-outlined text-white">support_agent</span></div>
-                    <div>
-                        <h1 class="text-lg font-extrabold text-slate-900 leading-none">Suporte Horizon</h1>
-                        <div class="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">Protocolo: <span id="chat-protocol" class="text-blue-600">---</span></div>
-                    </div>
-                </div>
-            </header>
-            <div id="chat-area" class="flex-1 overflow-y-auto p-6 bg-white space-y-6"></div>
-            <footer class="p-4 bg-slate-50 border-t border-slate-100 shrink-0">
-                <form id="chat-form" class="flex items-end gap-3 bg-white border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-600 transition-all">
-                    <textarea id="chat-input" class="flex-1 bg-transparent border-none outline-none text-sm p-3 resize-none max-h-32 min-h-[44px]" placeholder="Digite sua mensagem..."></textarea>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md"><span class="material-symbols-outlined">send</span></button>
+            <section id="sec-register" class="hidden-view space-y-6">
+                <h2 class="text-xl font-black text-slate-900 text-center">Quase lá!</h2>
+                <p class="text-slate-500 text-sm text-center">Informe seus dados para iniciar o atendimento.</p>
+                <form id="register-form" class="space-y-4">
+                    <input type="text" id="cust-name" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Nome Completo" required>
+                    <input type="email" id="cust-email" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="E-mail" required>
+                    <input type="tel" id="cust-phone" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Celular (WhatsApp)" required>
+                    <button type="submit" class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg transition-all flex justify-center items-center gap-2">Iniciar Chat <span class="material-symbols-outlined">arrow_forward</span></button>
+                    <button type="button" onclick="clientApp.navigate('subjects')" class="w-full py-2 text-slate-500 font-bold text-sm">Voltar</button>
                 </form>
-            </footer>
-        </section>
+            </section>
 
-        <section id="view-nps" class="hidden-view max-w-xl w-full bg-white rounded-3xl p-10 text-center shadow-xl border border-gray-100">
-            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span class="material-symbols-outlined text-3xl">star</span>
-            </div>
-            <h2 class="text-3xl font-extrabold tracking-tight mb-2 text-slate-900">Atendimento Encerrado</h2>
-            <p class="text-slate-500 font-medium mb-8">Em uma escala de 1 a 10, o quanto você indicaria nosso atendimento para um amigo ou familiar?</p>
-            
-            <div class="flex flex-wrap justify-center gap-2 mb-4" id="nps-buttons">
-                </div>
-            <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 px-2">
-                <span>1 - Nada Provável</span>
-                <span>10 - Muito Provável</span>
-            </div>
-            
-            <div id="nps-thanks" class="hidden-view bg-green-50 text-green-700 p-4 rounded-xl font-bold mb-6">
-                Obrigado pela sua avaliação!
-            </div>
-            
-            <button onclick="location.reload()" class="font-bold text-slate-500 hover:text-blue-600 transition-colors">Voltar ao início</button>
-        </section>
+            <section id="sec-chat" class="hidden-view flex-1 flex flex-col">
+                <div id="chat-messages" class="flex-1 overflow-y-auto space-y-4 pb-4"></div>
+                
+                <form id="chat-form" class="mt-4 flex gap-2 border-t pt-4 border-slate-100 shrink-0">
+                    <input type="file" id="file-input" class="hidden-view" accept="image/*,.pdf,.doc,.docx">
+                    <button type="button" id="btn-attach" onclick="document.getElementById('file-input').click()" class="hidden-view bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 flex items-center justify-center transition-colors shadow-sm" title="Anexar Arquivo">
+                        <span class="material-symbols-outlined">attach_file</span>
+                    </button>
+                    <input type="text" id="chat-input" class="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 outline-none font-medium focus:ring-2 focus:ring-blue-600" placeholder="Mensagem..." autocomplete="off" required>
+                    <button type="submit" id="btn-send" class="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl font-bold transition-all shadow-md flex items-center justify-center"><span class="material-symbols-outlined">send</span></button>
+                </form>
+                <div id="upload-progress" class="hidden-view text-[10px] text-blue-600 font-bold mt-2 animate-pulse text-center">Enviando anexo, aguarde...</div>
+            </section>
 
+            <section id="sec-nps" class="hidden-view text-center space-y-6 flex flex-col justify-center h-full">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4"><span class="material-symbols-outlined text-4xl">check_circle</span></div>
+                <h2 class="text-2xl font-black text-slate-900">Atendimento Encerrado</h2>
+                <p class="text-slate-500 font-medium">De 1 a 10, que nota você dá para o atendimento recebido?</p>
+                <div class="flex w-full gap-1 sm:gap-2 mb-4" id="nps-buttons"></div>
+                <div id="nps-thanks" class="hidden-view text-green-600 font-black text-lg mt-4 animate-bounce">Obrigado pela avaliação!</div>
+            </section>
+
+        </div>
     </main>
 
     <script type="module" src="js/client/app.js"></script>

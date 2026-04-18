@@ -1,141 +1,152 @@
-// Arquivo: js/client/app.js
 import { clientAPI } from './api.js';
 
 const App = {
-    currentTicketId: null,
+    selectedSubject: null,
+    ticketId: null,
 
     async init() {
-        window.clientApp = this; // Expoe pro HTML pra usar no onclick dos botões NPS
-        
+        window.clientApp = this;
         await this.loadSubjects();
-        this.renderNPSButtons(); // Desenha os botões de 1 a 10
 
-        document.getElementById('btn-chat').addEventListener('click', () => this.processForm('chat'));
-        document.getElementById('btn-email').addEventListener('click', () => this.processForm('email'));
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Aguarde...`;
+            
+            const name = document.getElementById('cust-name').value;
+            const email = document.getElementById('cust-email').value;
+            const phone = document.getElementById('cust-phone').value;
+
+            try {
+                let customer = await clientAPI.checkCustomer(email);
+                if (!customer) {
+                    customer = await clientAPI.createCustomer({ full_name: name, email: email, phone: phone });
+                }
+                const ticket = await clientAPI.createTicket(customer.id, this.selectedSubject);
+                this.ticketId = ticket.id;
+                
+                this.navigate('chat');
+                document.getElementById('header-desc').innerText = `Protocolo HZ-${ticket.protocol_number}`;
+                
+                this.renderMsg("Olá! Recebemos seu chamado e um analista logo irá te atender.", 'system');
+
+                clientAPI.subscribeToTicket(this.ticketId, (t) => {
+                    if (t.status === 'closed') {
+                        this.navigate('nps');
+                        this.renderNPSButtons();
+                    }
+                    if (t.is_upload_enabled) {
+                        document.getElementById('btn-attach').classList.remove('hidden-view');
+                    } else {
+                        document.getElementById('btn-attach').classList.add('hidden-view');
+                    }
+                });
+
+                clientAPI.subscribeToMessages(this.ticketId, (msg, fUrl, fName, fType) => {
+                    this.renderMsg(msg, 'agent', fUrl, fName, fType);
+                });
+
+            } catch (err) {
+                alert("Erro ao iniciar chat: " + err.message);
+                btn.innerHTML = `Tentar Novamente`;
+            }
+        });
 
         document.getElementById('chat-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
-            if(!text || !this.currentTicketId) return;
-            
-            this.renderMessage(text, 'customer');
+            if(!text || !this.ticketId) return;
+            this.renderMsg(text, 'customer');
             input.value = '';
-            await clientAPI.sendMessage(this.currentTicketId, text);
+            await clientAPI.sendMessage(this.ticketId, text);
+        });
+
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            
+            document.getElementById('upload-progress').classList.remove('hidden-view');
+            document.getElementById('btn-send').disabled = true;
+            
+            try {
+                const fileData = await clientAPI.uploadFile(file);
+                await clientAPI.sendMessage(this.ticketId, "📎 Anexo enviado pelo cliente:", fileData);
+                this.renderMsg("📎 Anexo enviado:", 'customer', fileData.url, fileData.name, fileData.type);
+            } catch(err) {
+                alert("Erro no upload: " + err.message);
+            } finally {
+                document.getElementById('upload-progress').classList.add('hidden-view');
+                document.getElementById('btn-send').disabled = false;
+                e.target.value = ''; 
+            }
         });
     },
 
+    navigate(target) {
+        ['subjects', 'register', 'chat', 'nps'].forEach(s => document.getElementById(`sec-${s}`).classList.add('hidden-view'));
+        document.getElementById(`sec-${target}`).classList.remove('hidden-view');
+    },
+
     async loadSubjects() {
+        const container = document.getElementById('subject-list');
         try {
-            const subjects = await clientAPI.getSubjects();
-            const select = document.getElementById('ticket-subject');
-            select.innerHTML = '<option value="">Selecione um assunto...</option>';
-            subjects.forEach(sub => select.innerHTML += `<option value="${sub.id}">${sub.label}</option>`);
-        } catch (error) { console.error("Erro assuntos:", error); }
+            const subjects = await clientAPI.getActiveSubjects();
+            container.innerHTML = subjects.map(s => `<button onclick="clientApp.selectSubject('${s.id}')" class="w-full text-left p-4 bg-white border border-slate-200 rounded-2xl hover:border-blue-600 hover:shadow-md transition-all font-bold text-slate-700 flex justify-between items-center group">${s.label} <span class="material-symbols-outlined text-slate-300 group-hover:text-blue-600">chevron_right</span></button>`).join('');
+        } catch (e) {
+            container.innerHTML = `<div class="text-center text-red-500 font-bold">Erro ao carregar opções.</div>`;
+        }
+    },
+
+    selectSubject(id) {
+        this.selectedSubject = id;
+        this.navigate('register');
+    },
+
+    renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {
+        const area = document.getElementById('chat-messages');
+        let mediaHtml = '';
+        
+        if (fileUrl) {
+            if (fileType && fileType.startsWith('image/')) {
+                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] rounded-lg border"></a></div>`;
+            } else {
+                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-1 bg-black/10 p-2 rounded text-[10px] font-bold text-inherit"><span class="material-symbols-outlined text-xs">download</span> ${fileName || 'Arquivo'}</a></div>`;
+            }
+        }
+
+        if (type === 'system') {
+            area.innerHTML += `<div class="flex justify-center w-full"><div class="bg-blue-50 text-blue-800 text-xs font-bold px-4 py-2 rounded-full border border-blue-100 text-center">${text}</div></div>`;
+        } else {
+            const isMe = type === 'customer';
+            area.innerHTML += `
+                <div class="flex ${isMe ? 'justify-end' : 'justify-start'} w-full">
+                    <div class="max-w-[85%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isMe ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border text-slate-800 rounded-tl-none'}">
+                        ${text}${mediaHtml}
+                    </div>
+                </div>`;
+        }
+        area.scrollTop = area.scrollHeight;
     },
 
     renderNPSButtons() {
         const container = document.getElementById('nps-buttons');
         let html = '';
-        for (let i = 1; i <= 10; i++) {
-            // Cores baseadas na nota (Detratores: Vermelho, Neutros: Amarelo, Promotores: Verde)
-            let colorClass = 'bg-slate-100 text-slate-600 hover:bg-slate-200';
-            if (i <= 6) colorClass = 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-100';
-            else if (i <= 8) colorClass = 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-100';
-            else colorClass = 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-100';
-
-            html += `<button onclick="clientApp.submitNPS(${i}, this)" class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl font-black text-sm sm:text-base transition-all ${colorClass}">${i}</button>`;
+        for(let i=1; i<=10; i++) {
+            let colorClass = i <= 6 ? 'bg-red-100 text-red-600 hover:bg-red-500 hover:text-white' : i <= 8 ? 'bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white' : 'bg-green-100 text-green-600 hover:bg-green-500 hover:text-white';
+            html += `<button onclick="clientApp.submitNPS(${i}, this)" class="flex-1 h-10 sm:h-12 rounded-lg sm:rounded-xl font-black text-sm sm:text-base transition-all flex items-center justify-center ${colorClass}">${i}</button>`;
         }
         container.innerHTML = html;
     },
 
-    async processForm(channel) {
-        const name = document.getElementById('client-name').value.trim();
-        const email = document.getElementById('client-email').value.trim();
-        const subjectId = document.getElementById('ticket-subject').value;
-        const orderNumber = document.getElementById('client-order').value.trim();
-        const message = document.getElementById('client-message').value.trim();
-
-        if (!name || !email || !subjectId || !message) {
-            alert("Preencha os campos obrigatórios.");
-            return;
-        }
-
-        const btn = document.getElementById(`btn-${channel}`);
-        const originalText = btn.innerHTML;
-        btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Processando...`;
-        btn.disabled = true;
-
-        try {
-            const customer = await clientAPI.getOrCreateCustomer(name, email);
-            const ticket = await clientAPI.createTicket(customer.id, subjectId, channel, orderNumber);
-            this.currentTicketId = ticket.id;
-            
-            await clientAPI.sendMessage(ticket.id, message);
-            const protocoloVisual = `HZ-${ticket.protocol_number}`;
-
-            document.getElementById('view-contact').classList.add('hidden-view');
-
-            if (channel === 'chat') {
-                document.getElementById('view-chat').classList.remove('hidden-view');
-                document.getElementById('chat-protocol').innerText = protocoloVisual;
-                this.renderMessage(message, 'customer');
-                this.renderMessage("Protocolo gerado. Aguarde um analista.", 'system');
-                
-                // Escuta as mensagens do agente
-                clientAPI.subscribeToMessages(ticket.id, (msg) => this.renderMessage(msg, 'agent'));
-
-                // ESCUTA O STATUS DO TICKET (Para fechar o chat e abrir NPS)
-                clientAPI.subscribeToTicketStatus(ticket.id, (status) => {
-                    if (status === 'closed') {
-                        document.getElementById('view-chat').classList.add('hidden-view');
-                        document.getElementById('view-nps').classList.remove('hidden-view');
-                    }
-                });
-
-            } else {
-                document.getElementById('view-success').classList.remove('hidden-view');
-                document.getElementById('success-protocol').innerText = protocoloVisual;
-            }
-
-        } catch (error) {
-            alert("Erro ao abrir ticket.");
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    },
-
     async submitNPS(rating, btnElement) {
+        document.querySelectorAll('#nps-buttons button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+        btnElement.style.opacity = '1'; 
+        btnElement.style.transform = 'scale(1.1)';
         try {
-            // Dá um feedback visual na nota escolhida
-            const buttons = document.getElementById('nps-buttons').querySelectorAll('button');
-            buttons.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
-            btnElement.style.opacity = '1';
-            btnElement.classList.add('ring-4', 'ring-offset-2', 'ring-blue-400');
-
-            // Envia pro banco
-            await clientAPI.submitNPS(this.currentTicketId, rating);
-            
-            // Mostra agradecimento
+            await clientAPI.submitNPS(this.ticketId, rating);
             document.getElementById('nps-thanks').classList.remove('hidden-view');
-        } catch (error) {
-            console.error("Erro ao salvar NPS:", error);
-            alert("Erro ao registrar avaliação.");
-        }
-    },
-
-    renderMessage(text, sender) {
-        const area = document.getElementById('chat-area');
-        if (sender === 'system') {
-            area.innerHTML += `<div class="flex justify-center my-4"><span class="bg-slate-100 text-slate-500 text-xs font-bold px-4 py-1 rounded-full">${text}</span></div>`;
-        } else {
-            const isCust = sender === 'customer';
-            area.innerHTML += `
-                <div class="flex items-start gap-3 max-w-[85%] mt-4 ${isCust ? 'ml-auto flex-row-reverse' : ''}">
-                    <div class="${isCust ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200'} p-4 rounded-2xl text-sm shadow-sm whitespace-pre-wrap">${text}</div>
-                </div>`;
-        }
-        area.scrollTop = area.scrollHeight;
+        } catch (e) { alert("Erro ao salvar avaliação."); }
     }
 };
 

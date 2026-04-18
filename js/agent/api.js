@@ -1,19 +1,14 @@
-// Arquivo: js/agent/api.js
 import { supabase } from '../supabase.js';
 
 export const agentAPI = {
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        
-        // NOVO: Marca o usuário como ONLINE no banco
         await supabase.from('profiles').update({ is_online: true }).eq('id', data.user.id);
-        
         return data;
     },
 
     async setOffline(userId) {
-        // NOVO: Marca como OFFLINE ao deslogar
         await supabase.from('profiles').update({ is_online: false }).eq('id', userId);
     },
 
@@ -21,14 +16,15 @@ export const agentAPI = {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.user) {
-            const { error: profileError } = await supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, is_approved: false, role: 'analista' }]);
-            if (profileError) throw profileError;
+            await supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, is_approved: false, role: 'analista' }]);
         }
         return data;
     },
 
     async getPendingTickets() {
-        const { data, error } = await supabase.from('tickets').select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, customers (full_name, email), ticket_subjects (label)`).in('status', ['open', 'in_progress']).order('created_at', { ascending: true });
+        const { data, error } = await supabase.from('tickets')
+            .select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, customers (full_name, email), ticket_subjects (label)`)
+            .in('status', ['open', 'in_progress']).order('created_at', { ascending: true });
         if (error) throw error;
         return data;
     },
@@ -40,30 +36,26 @@ export const agentAPI = {
     },
 
     async closeTicket(ticketId, tag2Text) {
-        const { error } = await supabase.from('tickets').update({ status: 'closed', tag2_detail: tag2Text, closed_at: new Date() }).eq('id', ticketId);
-        if (error) throw error;
+        await supabase.from('tickets').update({ status: 'closed', tag2_detail: tag2Text, closed_at: new Date(), is_upload_enabled: false }).eq('id', ticketId);
     },
 
     async transferTicket(ticketId, newSubjectId, newAgentId, tag2Text) {
-        const updates = { tag2_detail: tag2Text, status: 'open', last_interaction_at: new Date() };
-        if (newAgentId) { updates.agent_id = newAgentId; } else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
-        const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
-        if (error) throw error;
+        const updates = { tag2_detail: tag2Text, status: 'open', last_interaction_at: new Date(), is_upload_enabled: false };
+        if (newAgentId) { updates.agent_id = newAgentId; } 
+        else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
+        await supabase.from('tickets').update(updates).eq('id', ticketId);
     },
 
     async releaseMyTickets(agentId) {
-        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open' }).eq('agent_id', agentId).eq('status', 'in_progress');
-        if (error) throw error;
+        await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false }).eq('agent_id', agentId).eq('status', 'in_progress');
     },
 
     async reassignTicket(ticketId, newAgentId) {
         const updates = newAgentId ? { agent_id: newAgentId, status: 'in_progress', last_interaction_at: new Date() } : { agent_id: null, status: 'open', last_interaction_at: new Date() };
-        const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
-        if (error) throw error;
+        await supabase.from('tickets').update(updates).eq('id', ticketId);
     },
 
     async getActiveAgents() {
-        // NOVO: Só puxa os analistas que estão APROVADOS e ONLINE
         const { data, error } = await supabase.from('profiles').select('id, full_name').eq('is_approved', true).eq('is_online', true).order('full_name');
         if (error) throw error;
         return data;
@@ -76,17 +68,17 @@ export const agentAPI = {
     },
 
     async sendMessage(ticketId, content) {
-        const { error } = await supabase.from('messages').insert([{ ticket_id: ticketId, sender_type: 'agent', content: content }]);
-        if (error) throw error;
+        await supabase.from('messages').insert([{ ticket_id: ticketId, sender_type: 'agent', content: content }]);
         await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date() }).eq('id', ticketId);
     },
 
-    // NOVO: Busca do Histórico baseada estritamente no E-MAIL do cliente
+    async toggleUpload(ticketId, isEnabled) {
+        const { error } = await supabase.from('tickets').update({ is_upload_enabled: isEnabled }).eq('id', ticketId);
+        if (error) throw error;
+    },
+
     async getCustomerHistoryByEmail(email) {
-        const { data, error } = await supabase.from('tickets')
-            .select(`*, customers!inner(email), ticket_subjects(label)`)
-            .eq('customers.email', email)
-            .order('created_at', { ascending: false });
+        const { data, error } = await supabase.from('tickets').select(`*, customers!inner(email), ticket_subjects(label)`).eq('customers.email', email).order('created_at', { ascending: false });
         if (error) throw error;
         return data;
     },
@@ -98,8 +90,7 @@ export const agentAPI = {
     },
 
     async createOrder(orderData) {
-        const { error } = await supabase.from('orders').insert([orderData]);
-        if (error) throw error;
+        await supabase.from('orders').insert([orderData]);
     },
 
     async getTeamProfiles() {
@@ -115,23 +106,16 @@ export const agentAPI = {
     },
 
     async approveUser(userId, role) {
-        const { error } = await supabase.from('profiles').update({ is_approved: true, role: role }).eq('id', userId);
-        if (error) throw error;
+        await supabase.from('profiles').update({ is_approved: true, role: role }).eq('id', userId);
     },
 
     async updateRoutingStatus(userId, isActive) {
-        const { error } = await supabase.from('profiles').update({ is_routing_active: isActive }).eq('id', userId);
-        if (error) throw error;
+        await supabase.from('profiles').update({ is_routing_active: isActive }).eq('id', userId);
     },
 
     async toggleAgentSkill(agentId, subjectId, isAdding) {
-        if (isAdding) {
-            const { error } = await supabase.from('agent_skills').insert([{ agent_id: agentId, subject_id: subjectId }]);
-            if (error) throw error;
-        } else {
-            const { error } = await supabase.from('agent_skills').delete().eq('agent_id', agentId).eq('subject_id', subjectId);
-            if (error) throw error;
-        }
+        if (isAdding) await supabase.from('agent_skills').insert([{ agent_id: agentId, subject_id: subjectId }]);
+        else await supabase.from('agent_skills').delete().eq('agent_id', agentId).eq('subject_id', subjectId);
     },
 
     subscribeToQueue(onUpdateCallback) {
@@ -141,15 +125,16 @@ export const agentAPI = {
     subscribeToMessages(ticketId, onNewMessage) {
         return supabase.channel(`ticket-${ticketId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
-                if (payload.new.sender_type === 'customer') { onNewMessage(payload.new.content); }
+                if (payload.new.sender_type === 'customer') {
+                    onNewMessage(payload.new.content, payload.new.file_url, payload.new.file_name, payload.new.file_type);
+                }
             }).subscribe();
     },
 
     subscribeToAllMessages(ticketId, onNewMessage) {
         return supabase.channel(`monitor-${ticketId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
-                // Passa também a data/hora exata (created_at) para a tela
-                onNewMessage(payload.new.content, payload.new.sender_type, payload.new.created_at);
+                onNewMessage(payload.new.content, payload.new.sender_type, payload.new.created_at, payload.new.file_url, payload.new.file_name, payload.new.file_type);
             }).subscribe();
     }
 };

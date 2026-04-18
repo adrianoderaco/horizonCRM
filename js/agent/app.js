@@ -1,4 +1,3 @@
-// Arquivo: js/agent/app.js
 import { agentAPI } from './api.js';
 import { supabase } from '../supabase.js';
 import { Orchestrator } from './orchestrator.js';
@@ -82,7 +81,7 @@ const App = {
                 });
 
             } catch (error) { 
-                alert("Erro detalhado no login: " + error.message); 
+                alert("Erro no login: " + error.message); 
                 btn.innerHTML = originalText; 
             }
         });
@@ -160,15 +159,17 @@ const App = {
             .filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id)
             .sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
         
-        container.innerHTML = myTickets.map(t => `
+        container.innerHTML = myTickets.map(t => {
+            const initial = t.customers?.full_name ? t.customers.full_name.charAt(0).toUpperCase() : 'C';
+            return `
             <div onclick="agentApp.pickTicket('${t.id}')" 
-                 class="chat-bubble cursor-pointer text-white text-[10px] font-black w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 shrink-0 border-2 ${this.activeTicketId === t.id ? 'border-slate-800' : 'border-transparent'}"
+                 class="chat-bubble cursor-pointer text-white text-lg font-black w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 shrink-0 border-2 ${this.activeTicketId === t.id ? 'border-slate-800' : 'border-transparent'}"
                  data-sender="${t.last_sender || 'customer'}" 
                  data-time="${t.last_interaction_at || t.created_at}"
-                 title="HZ-${t.protocol_number}">
-                 ${String(t.protocol_number).slice(-3)} 
-            </div>
-        `).join('');
+                 title="${t.customers?.full_name || 'Cliente'} (HZ-${t.protocol_number})">
+                 ${initial}
+            </div>`
+        }).join('');
     },
 
     toggleAuthMode() {
@@ -192,6 +193,22 @@ const App = {
             await agentAPI.updateRoutingStatus(this.currentUser.id, isActive);
             Orchestrator.setStatus(isActive); 
         } catch(e) { document.getElementById('toggle-routing').checked = !isActive; }
+    },
+
+    async toggleClientUpload(isEnabled) {
+        try {
+            await agentAPI.toggleUpload(this.activeTicketId, isEnabled);
+            this.updateUploadToggleUI(isEnabled);
+        } catch(e) { 
+            alert("Erro ao mudar permissão."); 
+            document.getElementById('toggle-upload').checked = !isEnabled; 
+        }
+    },
+
+    updateUploadToggleUI(isEnabled) {
+        const textEl = document.getElementById('upload-status-text');
+        textEl.innerText = isEnabled ? 'Anexos: Liberado' : 'Anexos: Bloqueado';
+        textEl.className = `text-[10px] font-bold uppercase ${isEnabled ? 'text-blue-600' : 'text-slate-500'}`;
     },
 
     async loadQueue() {
@@ -261,24 +278,34 @@ const App = {
 
         try {
             const msgs = await agentAPI.getMessages(ticketId);
-            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at)).join('');
+            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join('');
             content.scrollTop = content.scrollHeight;
 
             if (this.monitorSub) this.monitorSub.unsubscribe();
-            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt) => {
-                content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt);
+            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt, fUrl, fName, fType) => {
+                content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt, fUrl, fName, fType);
                 content.scrollTop = content.scrollHeight;
             });
         } catch(e) { content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro ao carregar monitoria.</div>'; }
     },
 
-    formatMonitorMsg(text, type, createdAt) {
+    formatMonitorMsg(text, type, createdAt, fileUrl = null, fileName = null, fileType = null) {
         const isAgent = type === 'agent';
         const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        
+        let mediaHtml = '';
+        if (fileUrl) {
+            if (fileType && fileType.startsWith('image/')) {
+                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300"></a></div>`;
+            } else {
+                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-1 bg-black/10 p-2 rounded text-[10px] font-bold"><span class="material-symbols-outlined text-xs">download</span> ${fileName || 'Arquivo'}</a></div>`;
+            }
+        }
+
         return `
             <div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4">
                 <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div>
-                <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}</div>
+                <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}${mediaHtml}</div>
             </div>`;
     },
 
@@ -315,6 +342,9 @@ const App = {
 
             this.renderBubbles(); 
             this.currentCustomer = t.customers; 
+
+            document.getElementById('toggle-upload').checked = t.is_upload_enabled || false;
+            this.updateUploadToggleUI(t.is_upload_enabled || false);
             
             document.getElementById('chat-header-name').innerText = t.customers?.full_name || 'Desconhecido';
             document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
@@ -330,15 +360,13 @@ const App = {
             if (t.customer_id) this.loadCustomerOrders(t.customer_id);
 
             const msgs = await agentAPI.getMessages(id);
-            msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
+            msgs.forEach(m => this.renderMsg(m.content, m.sender_type, m.file_url, m.file_name, m.file_type));
 
             if (this.messageSub) this.messageSub.unsubscribe();
             
-            // INTEGRAÇÃO INSTANTÂNEA NA BOLHA QUANDO O CLIENTE RESPONDE:
-            this.messageSub = agentAPI.subscribeToMessages(id, (msg) => {
-                this.renderMsg(msg, 'customer');
+            this.messageSub = agentAPI.subscribeToMessages(id, (msg, fUrl, fName, fType) => {
+                this.renderMsg(msg, 'customer', fUrl, fName, fType);
                 
-                // Pinta a bolha de azul na hora
                 const tkIndex = this.activeTickets.findIndex(tk => tk.id === id);
                 if (tkIndex > -1) {
                     this.activeTickets[tkIndex].last_sender = 'customer';
@@ -353,12 +381,24 @@ const App = {
         }
     },
 
-    renderMsg(text, type) {
+    renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {
         const isAgent = type === 'agent';
+        let mediaHtml = '';
+        
+        if (fileUrl) {
+            if (fileType && fileType.startsWith('image/')) {
+                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300 hover:opacity-80 transition-opacity"></a></div>`;
+            } else {
+                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-2 bg-black/10 p-2.5 rounded-lg text-xs font-bold hover:bg-black/20 transition-colors cursor-pointer"><span class="material-symbols-outlined text-sm">download</span> ${fileName || 'Arquivo'}</a></div>`;
+            }
+        }
+
         const area = document.getElementById('chat-history');
         area.innerHTML += `
             <div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full">
-                <div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 whitespace-pre-wrap'}">${text}</div>
+                <div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 whitespace-pre-wrap'}">
+                    ${text}${mediaHtml}
+                </div>
             </div>`;
         area.scrollTop = area.scrollHeight;
     },
