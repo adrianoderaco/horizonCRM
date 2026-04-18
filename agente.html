@@ -135,76 +135,33 @@
                         </div>
                         
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">move_to_inbox</span> Abertos</div>
-                                <div class="text-3xl font-black text-slate-900" id="stat-open">0</div>
-                            </div>
-                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-blue-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">headset_mic</span> Em Atendimento</div>
-                                <div class="text-3xl font-black text-blue-600" id="stat-inprog">0</div>
-                            </div>
-                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-green-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">check_circle</span> Encerrados</div>
-                                <div class="text-3xl font-black text-green-600" id="stat-closed">0</div>
-                            </div>
-                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between" title="Tempo Médio de Atendimento">
-                                <div class="text-[10px] font-black text-purple-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">timer</span> TMA (Médio)</div>
-                                <div class="text-2xl font-black text-purple-600 truncate" id="stat-tma">0m</div>
-                            </div>
-                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between" title="Tempo Médio de Espera (Fila)">
-                                <div class="text-[10px] font-black text-orange-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">hourglass_empty</span> TME (Fila)</div>
-                                <div class="text-2xl font-black text-orange-600 truncate" id="stat-tme">0m</div>
-                            </div>
+                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">move_to_inbox</span> Abertos</div><div class="text-3xl font-black text-slate-900" id="stat-open">0</div></div>
+                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-blue-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">headset_mic</span> Em Atendimento</div><div class="text-3xl font-black text-blue-600" id="stat-inprog">0</div></div>
+                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-green-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">check_circle</span> Encerrados</div><div class="text-3xl font-black text-green-600" id="stat-closed">0</div></div>
+                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between" title="Tempo Médio de Atendimento"><div class="text-[10px] font-black text-purple-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">timer</span> TMA (Médio)</div><div class="text-2xl font-black text-purple-600 truncate" id="stat-tma">0m</div></div>
+                            <div class="bg-white p-5 rounded-2xl border shadow-sm flex flex-col justify-between" title="Tempo Médio de Espera (Fila)"><div class="text-[10px] font-black text-orange-500 uppercase mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">hourglass_empty</span> TME (Fila)</div><div class="text-2xl font-black text-orange-600 truncate" id="stat-tme">0m</div></div>
                         </div>
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center">
-                                <h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Produtividade por Canal</h3>
-                                <div class="w-full space-y-6 mt-4" id="channel-stats-container">
-                                    </div>
-                            </div>
-                            <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col">
-                                <div class="flex justify-between items-center border-b pb-4 mb-6">
-                                    <h3 class="font-black text-slate-900 uppercase text-xs tracking-widest">Ranking de Analistas (Fechados)</h3>
-                                    <span class="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded">Clique p/ Filtrar Tabela</span>
-                                </div>
-                                <div id="analyst-ranking" class="space-y-3 overflow-y-auto flex-1 pr-2"></div>
-                            </div>
+                            <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center"><h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Produtividade por Canal</h3><div class="w-full space-y-6 mt-4" id="channel-stats-container"></div></div>
+                            <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col"><div class="flex justify-between items-center border-b pb-4 mb-6"><h3 class="font-black text-slate-900 uppercase text-xs tracking-widest">Ranking de Analistas (Fechados)</h3><span class="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded">Clique p/ Filtrar Tabela</span></div><div id="analyst-ranking" class="space-y-3 overflow-y-auto flex-1 pr-2"></div></div>
                         </div>
 
                         <div class="bg-white rounded-3xl border shadow-sm overflow-hidden mt-8 flex flex-col">
                             <div class="p-6 border-b bg-slate-50 flex justify-between items-center">
-                                <h3 class="font-black text-slate-900 flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-slate-400">inventory_2</span> Casos Fechados no Período
-                                </h3>
+                                <h3 class="font-black text-slate-900 flex items-center gap-2"><span class="material-symbols-outlined text-slate-400">inventory_2</span> Casos Fechados no Período</h3>
                                 <div class="flex items-center gap-3">
-                                    <div id="active-filter-badge" class="hidden-view bg-blue-100 text-blue-700 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
-                                        Agente: <span id="active-filter-name"></span>
-                                        <button onclick="agentApp.filterDashboardByAgent(null)" class="hover:text-red-600 ml-1"><span class="material-symbols-outlined text-[12px]">close</span></button>
-                                    </div>
-                                    <button onclick="agentApp.exportCSV()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1">
-                                        <span class="material-symbols-outlined text-[14px]">download</span> Exportar CSV
-                                    </button>
+                                    <div id="active-filter-badge" class="hidden-view bg-blue-100 text-blue-700 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">Agente: <span id="active-filter-name"></span><button onclick="agentApp.filterDashboardByAgent(null)" class="hover:text-red-600 ml-1"><span class="material-symbols-outlined text-[12px]">close</span></button></div>
+                                    <button onclick="agentApp.exportCSV()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">download</span> Exportar CSV</button>
                                 </div>
                             </div>
                             <div class="overflow-x-auto max-h-[500px]">
                                 <table class="w-full text-left whitespace-nowrap">
-                                    <thead class="bg-white border-b text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-10 shadow-sm">
-                                        <tr>
-                                            <th class="p-4">Protocolo</th>
-                                            <th class="p-4">Cliente / Motivo Original</th>
-                                            <th class="p-4">Tags (Agente)</th>
-                                            <th class="p-4">Analista</th>
-                                            <th class="p-4">Tempo Atend.</th>
-                                            <th class="p-4 text-center">NPS</th>
-                                            <th class="p-4 text-right">Ação</th>
-                                        </tr>
-                                    </thead>
+                                    <thead class="bg-white border-b text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-10 shadow-sm"><tr><th class="p-4">Protocolo</th><th class="p-4">Cliente / Motivo Original</th><th class="p-4">Tags (Agente)</th><th class="p-4">Analista</th><th class="p-4">Tempo Atend.</th><th class="p-4 text-center">NPS</th><th class="p-4 text-right">Ação</th></tr></thead>
                                     <tbody class="divide-y bg-white" id="closed-cases-tbody"></tbody>
                                 </table>
                             </div>
                         </div>
-
                     </div>
                 </section>
 
@@ -220,8 +177,8 @@
                                     <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm">
                                         <h4 class="font-black text-slate-700 uppercase tracking-widest text-[10px] mb-4 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">forum</span> Canal Web (Chat)</h4>
                                         <div class="grid grid-cols-2 gap-4 mb-4">
-                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Alerta (Minutos)</label><input type="number" id="cfg-chat-warn-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
-                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Encerramento</label><input type="number" id="cfg-chat-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Ociosidade p/ Alerta (Minutos)</label><input type="number" id="cfg-chat-warn-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Ociosidade p/ Fechar (Minutos)</label><input type="number" id="cfg-chat-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
                                         </div>
                                         <label class="block text-[10px] font-bold text-slate-500 mb-1">Mensagem de Alerta (Chat)</label>
                                         <textarea id="cfg-macro-warn-chat" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm resize-y h-24" placeholder="Ex: Olá, ainda está aí?..."></textarea>
@@ -230,8 +187,8 @@
                                     <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm">
                                         <h4 class="font-black text-slate-700 uppercase tracking-widest text-[10px] mb-4 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">mail</span> Canal E-mail</h4>
                                         <div class="grid grid-cols-2 gap-4 mb-4">
-                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Alerta (Horas)</label><input type="number" id="cfg-email-warn-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
-                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Encerramento</label><input type="number" id="cfg-email-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Ociosidade p/ Alerta (Horas)</label><input type="number" id="cfg-email-warn-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Ociosidade p/ Fechar (Horas)</label><input type="number" id="cfg-email-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
                                         </div>
                                         <label class="block text-[10px] font-bold text-slate-500 mb-1">Mensagem de Alerta (E-mail)</label>
                                         <textarea id="cfg-macro-warn-email" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm resize-y h-24" placeholder="Ex: Oi, tudo bem? Estamos retornando..."></textarea>
@@ -239,7 +196,7 @@
                                 </div>
                                 
                                 <div class="mt-6">
-                                    <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem Final de Encerramento (Geral)</label>
+                                    <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem Final de Encerramento (Ambos os Canais)</label>
                                     <div class="flex gap-2 mb-3">
                                         <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
                                         <button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
@@ -248,9 +205,7 @@
                                 </div>
                             </div>
                             
-                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8">
-                                <span class="material-symbols-outlined">save</span> Salvar Configurações Gerais
-                            </button>
+                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8"><span class="material-symbols-outlined">save</span> Salvar SLAs e Macros</button>
                             
                             <div class="border-t pt-8 mt-8">
                                 <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)</h3>
@@ -295,7 +250,7 @@
                                 <div><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Informações</h4><div class="bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="font-black text-slate-900 text-base" id="crm-name">...</div><div class="text-xs font-bold text-slate-500 mt-1 truncate" id="crm-email">...</div></div></div>
                                 <div>
                                     <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Classificação e Notas</h4>
-                                    <div class="text-[10px] font-bold text-slate-500 mb-2">Motivo Original: <span id="crm-customer-tag" class="text-blue-600"></span></div>
+                                    <div class="text-[10px] font-bold text-slate-500 mb-2">Motivo Original (Cliente): <span id="crm-customer-tag" class="text-blue-600"></span></div>
                                     <select id="crm-tag1" onchange="agentApp.filterTag2()" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-2 outline-none text-slate-700 focus:ring-2 focus:ring-blue-600"><option value="">Selecione o Motivo (Tag 1)...</option></select>
                                     <select id="crm-tag2" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-3 outline-none text-slate-700 focus:ring-2 focus:ring-blue-600"><option value="">Selecione o Submotivo (Tag 2)...</option></select>
                                     <textarea id="crm-notes" class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm outline-none resize-none font-medium focus:ring-2 focus:ring-blue-600" rows="3" placeholder="Observações do atendimento (Obrigatório para fechar)..."></textarea>

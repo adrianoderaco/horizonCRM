@@ -51,8 +51,9 @@ const App = {
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         const dashStart = document.getElementById('dash-start');
         const dashEnd = document.getElementById('dash-end');
-        if(dashStart) dashStart.value = firstDay.toISOString().split('T')[0];
-        if(dashEnd) dashEnd.value = today.toISOString().split('T')[0];
+        
+        if (dashStart) dashStart.value = firstDay.toISOString().split('T')[0];
+        if (dashEnd) dashEnd.value = today.toISOString().split('T')[0];
 
         this.startLiveTimers(); 
 
@@ -63,6 +64,9 @@ const App = {
             }
         });
 
+        // ===============================================
+        // LOGIN DO AGENTE
+        // ===============================================
         document.getElementById('login-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login'); 
@@ -75,10 +79,10 @@ const App = {
             if (this.isRegisterMode) {
                 try { 
                     await agentAPI.register(document.getElementById('reg-name').value, email, pass); 
-                    alert("Aguarde aprovação."); 
+                    alert("Aguarde aprovação pelo Gestor."); 
                     this.toggleAuthMode(); 
                 } catch (err) { 
-                    alert("Erro: " + err.message); 
+                    alert("Erro ao registrar: " + err.message); 
                 } finally { 
                     btn.innerHTML = originalText; 
                 }
@@ -119,7 +123,7 @@ const App = {
                 }
                 
                 const statusSelect = document.getElementById('agent-status-select');
-                if(statusSelect) statusSelect.value = profile.status || 'online';
+                if (statusSelect) statusSelect.value = profile.status || 'online';
 
                 const shouldRouteLocal = profile.status === 'online';
                 Orchestrator.init(profile.id, this.systemSettings);
@@ -127,6 +131,7 @@ const App = {
 
                 await this.loadQueue();
 
+                // SUBSCRIPTIONS (TEMPO REAL)
                 agentAPI.subscribeToQueue(async () => {
                     await this.loadQueue();
                     if (this.currentUser && this.currentUser.status === 'online') {
@@ -192,16 +197,20 @@ const App = {
                 });
 
             } catch (error) { 
-                alert("Erro no login: " + error.message); 
+                console.error("Erro fatal no login", error);
+                alert(`Erro ao tentar entrar no sistema:\n\n${error.message}`); 
                 btn.innerHTML = originalText; 
             }
         });
 
+        // ===============================================
+        // MENSAGENS E ATENDIMENTO
+        // ===============================================
         document.getElementById('agent-chat-form')?.addEventListener('submit', async (e) => {
             e.preventDefault(); 
             const input = document.getElementById('chat-input'); 
             const text = input.value.trim();
-            if(!text || !this.activeTicketId) return;
+            if (!text || !this.activeTicketId) return;
             
             this.renderMsg(text, 'agent'); 
             input.value = '';
@@ -219,9 +228,9 @@ const App = {
             e.preventDefault(); 
             const input = document.getElementById('email-input'); 
             const text = input.value.trim();
-            if(!text || !this.activeTicketId) return;
+            if (!text || !this.activeTicketId) return;
             
-            if(!confirm("Prosseguir com a resposta ao cliente? O atendimento sairá da sua tela e retornará à fila em caso de resposta do cliente.")) return;
+            if (!confirm("Prosseguir com a resposta ao cliente? O atendimento sairá da sua tela e retornará à fila em caso de resposta do cliente.")) return;
             
             const btn = document.getElementById('btn-send-email'); 
             const origHTML = btn.innerHTML;
@@ -265,6 +274,7 @@ const App = {
             const input = document.getElementById('internal-chat-input'); 
             const text = input.value.trim();
             if (!text || !this.internalChatTarget) return;
+            
             try {
                 await agentAPI.sendInternalMessage(this.currentUser.id, this.internalChatTarget, text);
                 this.renderInternalMsg({ content: text }, true);
@@ -278,6 +288,7 @@ const App = {
     async toggleGlobalOrchestrator(isActive) {
         try {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
+            console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`);
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
             alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
@@ -287,11 +298,12 @@ const App = {
     setupAgentAttachment(btnId, inputId, isEmail = false) {
         const btn = document.getElementById(btnId); 
         const input = document.getElementById(inputId);
+        
         if (btn && input) {
             btn.addEventListener('click', () => input.click());
             input.addEventListener('change', async (e) => {
                 const file = e.target.files[0]; 
-                if(!file || !this.activeTicketId) return;
+                if (!file || !this.activeTicketId) return;
                 
                 const sendBtnId = isEmail ? 'btn-send-email' : 'btn-send-chat';
                 const btnSend = document.getElementById(sendBtnId); 
@@ -355,7 +367,7 @@ const App = {
     },
 
     async forceAgentStatus(agentId, newStatus) {
-        if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
+        if (!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
         try {
             await agentAPI.changeStatus(agentId, newStatus);
             if (newStatus !== 'online') {
@@ -390,7 +402,9 @@ const App = {
         wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none';
         wm.style.zIndex = '99999'; 
         let spans = '';
-        for(let i=0; i<150; i++) spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
+        for(let i=0; i<150; i++) {
+            spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
+        }
         wm.innerHTML = spans; 
         document.body.appendChild(wm);
     },
@@ -408,10 +422,14 @@ const App = {
         }
     },
 
+    // ===============================================
+    // TIMERS E SLA (Alertas Automáticos)
+    // ===============================================
     startLiveTimers() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         
         this.timerInterval = setInterval(() => {
+            // Relógio Visual
             document.querySelectorAll('.live-timer').forEach(el => {
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
                 const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0'); 
@@ -426,6 +444,7 @@ const App = {
                 }
             });
 
+            // Tratamento de SLA (Inatividade)
             if (this.systemSettings && this.currentUser) {
                 const chatWarnSecs = (this.systemSettings.chat_warning_min || 8) * 60;
                 const emailWarnSecs = (this.systemSettings.email_warning_hr || 24) * 3600;
@@ -433,6 +452,7 @@ const App = {
                 const emailCloseSecs = (this.systemSettings.email_timeout_hr || 48) * 3600;
 
                 this.activeTickets.forEach(t => {
+                    // Ignora tickets que não são meus
                     if (t.agent_id !== this.currentUser.id) return;
                     
                     const lastTime = new Date(t.last_interaction_at || t.created_at).getTime();
@@ -440,11 +460,13 @@ const App = {
                     
                     const el = document.getElementById(`bubble-${t.id}`);
                     if (el) {
+                        // O Cliente falou: Azul Vivo Piscando
                         if (t.last_sender === 'customer') {
                             el.style.backgroundColor = '#2563eb'; 
                             el.style.color = '#ffffff'; 
                             el.classList.add('animate-pulse');
                         } else {
+                            // O Agente falou (aguardando): Azul vai esmaecendo
                             el.classList.remove('animate-pulse');
                             const diffMinutes = Math.floor(diffSeconds / 60);
                             const maxFadingMins = t.channel === 'web' ? (this.systemSettings.chat_timeout_min || 10) : 60; 
@@ -455,18 +477,21 @@ const App = {
                         }
                     }
 
+                    // Se eu (agente) falei por último e o ticket não está fechando ainda:
                     if (t.last_sender === 'agent' && !this.closingTickets.has(t.id)) {
                         
+                        // 1. Mandar o aviso prévio?
                         if (!t.has_warning_sent) {
                             const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
                             const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
                             
                             if (isWebWarn || isEmailWarn) {
-                                t.has_warning_sent = true; 
+                                t.has_warning_sent = true; // Seta localmente pra não engasgar o loop
                                 this.executeWarning(t);
                             }
                         }
 
+                        // 2. Fechar definitivamente?
                         const isWebClose = t.channel === 'web' && diffSeconds >= chatCloseSecs;
                         const isEmailClose = t.channel === 'email' && diffSeconds >= emailCloseSecs;
 
@@ -483,34 +508,48 @@ const App = {
     async executeWarning(ticket) {
         try {
             console.log(`[SLA] Enviando Alerta de Ociosidade para HZ-${ticket.protocol_number}`);
-            let msg = ticket.channel === 'web' ? this.systemSettings.warning_macro_chat : this.systemSettings.warning_macro_email;
-            msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
-            msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
-
-            await agentAPI.sendWarningMacro(ticket.id, msg);
             
+            let rawMsg = ticket.channel === 'web' ? this.systemSettings.warning_macro_chat : this.systemSettings.warning_macro_email;
+            let msg = rawMsg || "Atenção: O atendimento será encerrado em breve por inatividade.";
+            
+            msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
+            msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
+
+            await agentAPI.sendSystemMessage(ticket.id, msg, true);
+            
+            // Se o agente estiver olhando pra esse chat agora, mostra a mensagem nele
             if (this.activeTicketId === ticket.id) {
-                this.renderMsg(msg, 'agent');
+                this.renderMsg(msg, 'system');
             }
-        } catch(e) { console.error("Falha ao enviar alerta:", e); }
+        } catch(e) { 
+            console.error("Falha ao enviar alerta:", e); 
+        }
     },
 
     async executeAutoClose(ticket) {
         try {
             console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
-            let msg = this.systemSettings.closure_macro;
-            msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
-            msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
-
-            await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'SLA', 'SLA', 'Encerrado Automaticamente por Inatividade');
             
+            let rawMsg = this.systemSettings.closure_macro;
+            let msg = rawMsg || "Atendimento encerrado por inatividade.";
+            
+            msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
+            msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
+
+            await agentAPI.sendSystemMessage(ticket.id, msg, false);
+            
+            // Força as tags SLA para fechar automático
+            await agentAPI.closeTicket(ticket.id, 'SLA Automático', 'Inatividade', 'Encerrado pelo sistema.');
+            
+            // Tira da tela
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
+            
             if (this.activeTicketId === ticket.id) {
                 this.activeTicketId = null; 
                 document.getElementById('menu-chat').classList.add('hidden-view'); 
                 this.navigate('queue');
             }
+            
             await this.loadQueue();
         } catch(e) { 
             console.error("Falha na macro de encerramento:", e); 
@@ -595,6 +634,7 @@ const App = {
         let html = '';
         this.allSubjects.forEach(sub => {
             const subsubs = this.allSubsubjects.filter(ss => ss.subject_id === sub.id);
+            
             let subHtml = subsubs.map(ss => `
                 <span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">
                     ${ss.label} 
@@ -627,7 +667,7 @@ const App = {
             input.value = '';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.renderSettingsTags();
-        } catch(e) { alert("Erro ao criar Motivo."); }
+        } catch(e) { alert("Erro ao criar Motivo Principal."); }
     },
 
     async addTag2(subjectId) {
@@ -643,7 +683,7 @@ const App = {
     },
 
     async toggleSubject(id, isActive) {
-        if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal?")) return;
+        if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal e todos os submotivos vinculados a ele?")) return;
         try { 
             await agentAPI.toggleSubject(id, isActive); 
             this.allSubjects = await agentAPI.getAllSubjects(); 
@@ -672,21 +712,21 @@ const App = {
         btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
         try {
             const payload = { 
-                chat_warning_min: parseInt(document.getElementById('cfg-chat-warn-time').value), 
-                chat_timeout_min: parseInt(document.getElementById('cfg-chat-time').value), 
-                email_warning_hr: parseInt(document.getElementById('cfg-email-warn-time').value), 
-                email_timeout_hr: parseInt(document.getElementById('cfg-email-time').value), 
+                chat_warning_min: parseInt(document.getElementById('cfg-chat-warn-time').value) || 8, 
+                chat_timeout_min: parseInt(document.getElementById('cfg-chat-time').value) || 10, 
+                email_warning_hr: parseInt(document.getElementById('cfg-email-warn-time').value) || 24, 
+                email_timeout_hr: parseInt(document.getElementById('cfg-email-time').value) || 48, 
                 warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, 
                 warning_macro_email: document.getElementById('cfg-macro-warn-email').value, 
                 closure_macro: document.getElementById('cfg-macro').value 
             };
             await agentAPI.updateSystemSettings(payload); 
             this.systemSettings = Object.assign({}, this.systemSettings, payload);
-            alert("Configurações atualizadas!");
+            alert("Configurações atualizadas com sucesso!");
         } catch (e) { 
             alert("Erro ao salvar as configurações."); 
         } finally { 
-            btn.innerHTML = `<span class="material-symbols-outlined">save</span> Salvar Configurações Gerais`; 
+            btn.innerHTML = `<span class="material-symbols-outlined">save</span> Salvar SLAs e Macros`; 
         }
     },
 
@@ -779,7 +819,7 @@ const App = {
                 }
             }
         } catch (e) {
-            console.error("Falha ao renderizar fila:", e);
+            console.error("Falha ao renderizar a fila de atendimentos:", e);
         }
     },
 
@@ -884,7 +924,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("O limite máximo simultâneo foi alcançado!"); 
+                    alert("O limite máximo de atendimentos simultâneos foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -1000,7 +1040,7 @@ const App = {
                 const m = msgs[i]; 
                 const isAgent = m.sender_type === 'agent' || m.sender_type === 'system'; 
                 const dateStr = new Date(m.created_at).toLocaleString('pt-BR'); 
-                const senderName = m.sender_type === 'system' ? 'Sistema Automático' : (isAgent ? 'Nossa Equipe' : (ticket.customers?.full_name || 'Cliente')); 
+                const senderName = m.sender_type === 'system' ? 'Sistema Automático' : (isAgent ? 'Nossa Equipe (Analista)' : (ticket.customers?.full_name || 'Cliente')); 
                 const bgColor = isAgent ? 'bg-blue-50 border-blue-100' : 'bg-white border-slate-200';
                 
                 html += `
@@ -1128,6 +1168,9 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
+    // ==========================================
+    // MODAL DE HISTÓRICO DE TICKET
+    // ==========================================
     async viewPastChat(ticketId, protocolNumber) {
         try {
             const ticket = await agentAPI.getTicketDetails(ticketId); 
@@ -1220,20 +1263,28 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
+    // ==========================================
+    // DASHBOARD & RELATÓRIOS (BLINDADO COM TRY/FINALLY)
+    // ==========================================
     async renderDashboard() {
+        const btnFiltro = document.getElementById('btn-filter-dash');
+        let origHtml = '<span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar';
+        
+        if (btnFiltro) {
+            origHtml = btnFiltro.innerHTML;
+            btnFiltro.innerHTML = `<span class="material-symbols-outlined animate-spin text-[14px]">refresh</span> Buscando...`;
+        }
+
         try {
             const startDate = document.getElementById('dash-start').value;
             const endDate = document.getElementById('dash-end').value;
             const groupFilter = document.getElementById('dash-filter-group').value;
-            
-            const btnFiltro = event?.target?.closest('button');
-            if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined animate-spin text-[14px]">refresh</span> Buscando...`;
 
             this.dashboardTickets = await agentAPI.getDashboardTickets(startDate, endDate); 
             this.allProfiles = await agentAPI.getTeamProfiles();
             
             const groupSelect = document.getElementById('dash-filter-group');
-            if (groupSelect.options.length === 1) {
+            if (groupSelect && groupSelect.options.length === 1) {
                 const uniqueGroups = [...new Set(this.allProfiles.map(p => p.team_group).filter(Boolean))];
                 uniqueGroups.forEach(g => groupSelect.innerHTML += `<option value="${g}">${g}</option>`);
             }
@@ -1256,7 +1307,7 @@ const App = {
             
             const npsTickets = closedTickets.filter(t => t.rating !== null); 
             const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; 
-            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0); 
+            const totalSales = orders ? orders.reduce((acc, o) => acc + parseFloat(o.amount || 0), 0) : 0; 
             
             let totalWaitMs = 0;
             let waitCount = 0;
@@ -1296,8 +1347,11 @@ const App = {
             this.renderClosedCasesTable(tickets, this.allProfiles);
             this.renderChannelStats(closedTickets);
 
-            if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar`;
-        } catch (error) { console.error("Erro no Dashboard Executivo:", error); }
+        } catch (error) { 
+            console.error("Erro ao carregar Dashboard Executivo:", error); 
+        } finally {
+            if (btnFiltro) btnFiltro.innerHTML = origHtml;
+        }
     },
 
     renderChannelStats(closedTickets) {
@@ -1362,7 +1416,7 @@ const App = {
         }).sort((a, b) => b.total - a.total).filter(r => r.total > 0);
         
         if (ranking.length === 0) { 
-            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados no período.</div>`; 
+            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados de NPS para ranquear no período.</div>`; 
             return; 
         }
         
@@ -1409,13 +1463,13 @@ const App = {
         container.innerHTML = filteredTickets.map(t => {
             const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema/Desconhecido';
             
-            const created = new Date(t.created_at);
-            const closed = new Date(t.closed_at);
-            const diffMs = closed - created;
-            const hrs = Math.floor(diffMs / 3600000);
-            const mins = Math.floor((diffMs % 3600000) / 60000);
-            let tempoStr = `${mins}m`;
-            if (hrs > 0) tempoStr = `${hrs}h ${mins}m`;
+            let tempoStr = '-';
+            if(t.assigned_at) {
+                const diffMs = new Date(t.closed_at) - new Date(t.assigned_at);
+                const hrs = Math.floor(diffMs / 3600000);
+                const mins = Math.floor((diffMs % 3600000) / 60000);
+                tempoStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+            }
 
             return `
             <tr class="hover:bg-slate-50 transition-colors">
@@ -1491,6 +1545,9 @@ const App = {
         document.body.removeChild(link);
     },
 
+    // ==========================================
+    // GESTÃO DE EQUIPE
+    // ==========================================
     async loadTeam() {
         try {
             const team = await agentAPI.getTeamProfiles(); 
