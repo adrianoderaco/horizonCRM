@@ -20,9 +20,11 @@ const App = {
     systemSettings: null,
     closingTickets: new Set(),
     
+    // DASHBOARD & TEAM FILTERS
     dashboardTickets: [],
     allProfiles: [],
     dashFilterAgent: null,
+    teamSearchQuery: "",
 
     async init() {
         window.agentApp = this; 
@@ -123,6 +125,9 @@ const App = {
 
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
+                    if (this.currentUser && this.currentUser.status === 'online') {
+                        Orchestrator.findAndClaimNext();
+                    }
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
                         this.renderDashboard();
                     }
@@ -223,7 +228,7 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 input.value = ''; 
                 
-                await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido', '', 'Aguardando cliente');
+                await agentAPI.closeTicket(this.activeTicketId, '', '', 'E-mail respondido (Aguardando cliente)');
                 
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
                 this.activeTicketId = null;
@@ -271,7 +276,7 @@ const App = {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global.");
+            alert("Erro ao alterar Orquestrador.");
         }
     },
 
@@ -338,7 +343,6 @@ const App = {
                 this.loadQueue();
             } else {
                 Orchestrator.setStatus(true);
-                Orchestrator.findAndClaimNext(); // Força puxar imediatamente
                 this.loadQueue();
             }
         } catch (e) { 
@@ -366,6 +370,14 @@ const App = {
             await agentAPI.updateAgentLimits(agentId, c, e);
         } catch (e) {
             alert("Erro ao atualizar limites do agente.");
+        }
+    },
+    
+    async updateAgentGroup(agentId, groupName) {
+        try {
+            await agentAPI.updateAgentGroup(agentId, groupName);
+        } catch (e) {
+            alert("Erro ao atualizar equipe do agente.");
         }
     },
 
@@ -439,21 +451,18 @@ const App = {
                         }
                     }
 
-                    // SLA: Se o Agente foi o último a falar, conta o tempo.
                     if (t.last_sender === 'agent' && !this.closingTickets.has(t.id)) {
                         
-                        // 1. Fase de Alerta
                         if (!t.has_warning_sent) {
                             const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
                             const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
                             
                             if (isWebWarn || isEmailWarn) {
-                                t.has_warning_sent = true; // Atualiza a flag localmente para não repetir
+                                t.has_warning_sent = true; 
                                 this.executeWarning(t);
                             }
                         }
 
-                        // 2. Fase de Encerramento Total
                         const isWebClose = t.channel === 'web' && diffSeconds >= chatCloseSecs;
                         const isEmailClose = t.channel === 'email' && diffSeconds >= emailCloseSecs;
 
@@ -476,13 +485,10 @@ const App = {
 
             await agentAPI.sendWarningMacro(ticket.id, msg);
             
-            // Se o agente estiver com essa janela aberta agora, mostra na tela
             if (this.activeTicketId === ticket.id) {
                 this.renderMsg(msg, 'agent');
             }
-        } catch(e) {
-            console.error("Falha ao enviar alerta:", e);
-        }
+        } catch(e) { console.error("Falha ao enviar alerta:", e); }
     },
 
     async executeAutoClose(ticket) {
@@ -786,8 +792,33 @@ const App = {
         content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando a conversa...</div>';
         
         try {
+            const ticket = await agentAPI.getTicketDetails(ticketId); 
             const msgs = await agentAPI.getMessages(ticketId);
-            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
+            
+            let html = `
+            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 relative z-20">
+                <h4 class="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">summarize</span> Resumo do Atendimento</h4>
+                <div class="grid grid-cols-2 gap-4 text-xs mb-3">
+                    <div>
+                        <div class="font-bold text-blue-900 mb-1">Motivo (Tag 1):</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não classificado'}</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-blue-900 mb-1">Submotivo (Tag 2):</div>
+                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não classificado'}</div>
+                    </div>
+                </div>
+                <div class="text-xs">
+                    <div class="font-bold text-blue-900 mb-1">Observações do Analista:</div>
+                    <div class="text-blue-800 italic bg-white/60 border border-blue-100 p-3 rounded-lg">${ticket.agent_notes || 'Nenhuma observação registrada.'}</div>
+                </div>
+            </div>
+            <div class="h-px bg-slate-200 mb-4"></div>
+            `;
+            
+            html += msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
+            
+            content.innerHTML = html;
             content.scrollTop = content.scrollHeight;
             
             if (this.monitorSub) this.monitorSub.unsubscribe();
@@ -797,7 +828,7 @@ const App = {
                 content.scrollTop = content.scrollHeight; 
             });
         } catch(e) { 
-            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão ao carregar conversa.</div>'; 
+            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão.</div>'; 
         }
     },
 
@@ -845,7 +876,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("O limite máximo de atendimentos simultâneos foi alcançado!"); 
+                    alert("O limite máximo simultâneo foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -874,6 +905,7 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
+            // TAGS
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
@@ -1123,8 +1155,8 @@ const App = {
                 html += '<div class="text-center text-slate-400 font-bold">Não existem mensagens registradas neste protocolo.</div>'; 
             } else {
                 html += msgs.map(m => `
-                <div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full mb-4">
-                    <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
+                <div class="flex ${m.sender_type === 'agent' || m.sender_type === 'system' ? 'justify-end' : 'justify-start'} w-full mb-4">
+                    <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' || m.sender_type === 'system' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
                         ${m.content}
                     </div>
                 </div>`).join('');
@@ -1180,10 +1212,14 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
+    // ==========================================
+    // DASHBOARD & RELATÓRIOS (Atualizado com TME/TMA e Filtro de Equipes)
+    // ==========================================
     async renderDashboard() {
         try {
             const startDate = document.getElementById('dash-start').value;
             const endDate = document.getElementById('dash-end').value;
+            const groupFilter = document.getElementById('dash-filter-group').value;
             
             const btnFiltro = event?.target?.closest('button');
             if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined animate-spin text-[14px]">refresh</span> Buscando...`;
@@ -1191,67 +1227,142 @@ const App = {
             this.dashboardTickets = await agentAPI.getDashboardTickets(startDate, endDate); 
             this.allProfiles = await agentAPI.getTeamProfiles();
             
+            // Popula os grupos do filtro (apenas uma vez)
+            const groupSelect = document.getElementById('dash-filter-group');
+            if (groupSelect.options.length === 1) {
+                const uniqueGroups = [...new Set(this.allProfiles.map(p => p.team_group).filter(Boolean))];
+                uniqueGroups.forEach(g => groupSelect.innerHTML += `<option value="${g}">${g}</option>`);
+            }
+
             const { data: orders } = await supabase.from('orders').select('amount'); 
             
-            const tickets = this.dashboardTickets;
-            const total = tickets.length; 
-            const open = tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length; 
+            // Filtro de Dados
+            let tickets = this.dashboardTickets;
+            if (groupFilter) {
+                const groupAgentsIds = this.allProfiles.filter(p => p.team_group === groupFilter).map(p => p.id);
+                tickets = tickets.filter(t => groupAgentsIds.includes(t.agent_id));
+            }
+            if (this.dashFilterAgent) {
+                tickets = tickets.filter(t => t.agent_id === this.dashFilterAgent);
+            }
+
+            const open = tickets.filter(t => t.status === 'open').length; 
+            const inProgress = tickets.filter(t => t.status === 'in_progress').length; 
             const closedTickets = tickets.filter(t => t.status === 'closed');
             const closed = closedTickets.length;
             
             const npsTickets = closedTickets.filter(t => t.rating !== null); 
             const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; 
-            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0);
+            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0); 
             
-            document.getElementById('stat-total').innerText = total; 
+            // Cálculo de Tempo Médio de Espera (TME) e Tempo Médio de Atendimento (TMA)
+            let totalWaitMs = 0;
+            let waitCount = 0;
+            let totalHandleMs = 0;
+            let handleCount = 0;
+
+            closedTickets.forEach(t => {
+                if (t.assigned_at) {
+                    // TME = assigned_at - created_at
+                    const waitMs = new Date(t.assigned_at) - new Date(t.created_at);
+                    if (waitMs >= 0) { totalWaitMs += waitMs; waitCount++; }
+                    
+                    // TMA = closed_at - assigned_at
+                    const handleMs = new Date(t.closed_at) - new Date(t.assigned_at);
+                    if (handleMs >= 0) { totalHandleMs += handleMs; handleCount++; }
+                }
+            });
+
+            const formatTime = (ms) => {
+                if (ms === 0) return "0m";
+                const m = Math.floor(ms / 60000);
+                if (m < 60) return `${m}m`;
+                const h = Math.floor(m / 60);
+                const remM = m % 60;
+                return `${h}h ${remM}m`;
+            };
+
+            const avgWaitMs = waitCount > 0 ? totalWaitMs / waitCount : 0;
+            const avgHandleMs = handleCount > 0 ? totalHandleMs / handleCount : 0;
+
             document.getElementById('stat-open').innerText = open; 
-            document.getElementById('stat-nps').innerText = avgNps; 
-            document.getElementById('stat-sales').innerText = `R$ ${totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            document.getElementById('stat-inprog').innerText = inProgress; 
+            document.getElementById('stat-closed').innerText = closed; 
+            document.getElementById('stat-tme').innerText = formatTime(avgWaitMs); 
+            document.getElementById('stat-tma').innerText = formatTime(avgHandleMs); 
             
-            this.updateStatusChart(open, closed); 
+            this.updateStatusChart(open + inProgress, closed); 
             this.updateAnalystRanking(closedTickets, this.allProfiles);
-            this.renderClosedCasesTable(this.dashboardTickets, this.allProfiles);
+            this.renderClosedCasesTable(tickets, this.allProfiles);
+            this.renderChannelStats(closedTickets);
 
             if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar`;
         } catch (error) { console.error("Erro no Dashboard Executivo:", error); }
     },
 
+    renderChannelStats(closedTickets) {
+        const container = document.getElementById('channel-stats-container');
+        if (!container) return;
+
+        const webTickets = closedTickets.filter(t => t.channel === 'web');
+        const emailTickets = closedTickets.filter(t => t.channel === 'email');
+
+        const calcMetrics = (arr) => {
+            let tma = 0, tme = 0;
+            arr.forEach(t => {
+                if(t.assigned_at) {
+                    tme += (new Date(t.assigned_at) - new Date(t.created_at));
+                    tma += (new Date(t.closed_at) - new Date(t.assigned_at));
+                }
+            });
+            return {
+                vol: arr.length,
+                tme: arr.length ? Math.floor((tme/arr.length)/60000) : 0,
+                tma: arr.length ? Math.floor((tma/arr.length)/60000) : 0
+            }
+        };
+
+        const wM = calcMetrics(webTickets);
+        const eM = calcMetrics(emailTickets);
+
+        container.innerHTML = `
+            <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><span class="material-symbols-outlined">forum</span></div><div><div class="font-black text-slate-800">Canal WEB (Chat)</div><div class="text-[10px] font-bold text-slate-500">${wM.vol} casos fechados</div></div></div>
+                <div class="text-right text-[10px] font-bold text-slate-500"><div class="mb-1"><span class="text-purple-600">TMA Médio:</span> ${wM.tma}m</div><div><span class="text-orange-600">TME Médio:</span> ${wM.tme}m</div></div>
+            </div>
+            <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center"><span class="material-symbols-outlined">mail</span></div><div><div class="font-black text-slate-800">Canal E-MAIL</div><div class="text-[10px] font-bold text-slate-500">${eM.vol} casos fechados</div></div></div>
+                <div class="text-right text-[10px] font-bold text-slate-500"><div class="mb-1"><span class="text-purple-600">TMA Médio:</span> ${eM.tma}m</div><div><span class="text-orange-600">TME Médio:</span> ${eM.tme}m</div></div>
+            </div>
+        `;
+    },
+
     updateStatusChart(open, closed) {
         const ctx = document.getElementById('chartStatus').getContext('2d'); 
         if (window.myChart) window.myChart.destroy();
-        
         window.myChart = new Chart(ctx, { 
             type: 'doughnut', 
-            data: { 
-                labels: ['Em Aberto/Curso', 'Finalizados'], 
-                datasets: [{ 
-                    data: [open, closed], 
-                    backgroundColor: ['#3b82f6', '#10b981'], 
-                    borderWidth: 0, 
-                    hoverOffset: 4 
-                }] 
-            }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                cutout: '75%', 
-                plugins: { 
-                    legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } 
-                } 
-            } 
+            data: { labels: ['Em Aberto/Curso', 'Finalizados'], datasets: [{ data: [open, closed], backgroundColor: ['#3b82f6', '#10b981'], borderWidth: 0, hoverOffset: 4 }] }, 
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } } } 
         });
     },
 
     updateAnalystRanking(closedTickets, profiles) {
         const container = document.getElementById('analyst-ranking');
-        const ranking = profiles.map(p => { 
+        const groupFilter = document.getElementById('dash-filter-group').value;
+        
+        let filteredProfiles = profiles;
+        if (groupFilter) filteredProfiles = profiles.filter(p => p.team_group === groupFilter);
+
+        const ranking = filteredProfiles.map(p => { 
             const agentTickets = closedTickets.filter(t => t.agent_id === p.id && t.rating !== null); 
             const avg = agentTickets.length > 0 ? (agentTickets.reduce((acc, t) => acc + t.rating, 0) / agentTickets.length).toFixed(1) : 0; 
-            return { id: p.id, name: p.full_name, avg: parseFloat(avg) }; 
-        }).sort((a, b) => b.avg - a.avg).filter(r => r.avg > 0);
+            const total = closedTickets.filter(t => t.agent_id === p.id).length;
+            return { id: p.id, name: p.full_name, avg: parseFloat(avg), total: total }; 
+        }).sort((a, b) => b.total - a.total).filter(r => r.total > 0);
         
         if (ranking.length === 0) { 
-            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados de NPS para ranquear no período.</div>`; 
+            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados no período.</div>`; 
             return; 
         }
         
@@ -1262,9 +1373,9 @@ const App = {
             <div onclick="agentApp.filterDashboardByAgent('${r.id}', '${r.name}')" class="cursor-pointer flex items-center justify-between p-4 bg-slate-50 border ${isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-100'} rounded-2xl transition-all hover:bg-blue-50 relative z-20">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div>
-                    <span class="font-bold text-slate-700">${r.name}</span>
+                    <div><div class="font-bold text-slate-700">${r.name}</div><div class="text-[9px] text-slate-400 font-bold uppercase">${r.total} Casos Fechados</div></div>
                 </div>
-                <span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg > 0 ? 'text-blue-600' : 'text-slate-400'} shadow-sm">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span>
+                <span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg >= 9 ? 'text-green-600' : (r.avg > 0 ? 'text-amber-500' : 'text-slate-400')} shadow-sm" title="Nota Média">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span>
             </div>`; 
         }).join('');
     },
@@ -1278,34 +1389,28 @@ const App = {
             document.getElementById('active-filter-badge').classList.remove('hidden-view');
             document.getElementById('active-filter-name').innerText = agentName;
         }
-        this.updateAnalystRanking(this.dashboardTickets.filter(t => t.status === 'closed'), this.allProfiles);
-        this.renderClosedCasesTable(this.dashboardTickets, this.allProfiles);
+        this.renderDashboard(); 
     },
 
     renderClosedCasesTable(tickets, profiles) {
         const container = document.getElementById('closed-cases-tbody');
         const closedTickets = tickets.filter(t => t.status === 'closed');
-        
-        const filteredTickets = closedTickets.filter(t => {
-            if (this.dashFilterAgent) return t.agent_id === this.dashFilterAgent;
-            return true;
-        });
 
-        if (filteredTickets.length === 0) {
+        if (closedTickets.length === 0) {
             container.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400 font-medium">Nenhum caso fechado no período.</td></tr>`;
             return;
         }
 
-        container.innerHTML = filteredTickets.map(t => {
-            const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema/Desconhecido';
+        container.innerHTML = closedTickets.map(t => {
+            const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema Automático';
             
-            const created = new Date(t.created_at);
-            const closed = new Date(t.closed_at);
-            const diffMs = closed - created;
-            const hrs = Math.floor(diffMs / 3600000);
-            const mins = Math.floor((diffMs % 3600000) / 60000);
-            let tempoStr = `${mins}m`;
-            if (hrs > 0) tempoStr = `${hrs}h ${mins}m`;
+            let tempoStr = '-';
+            if(t.assigned_at) {
+                const diffMs = new Date(t.closed_at) - new Date(t.assigned_at);
+                const hrs = Math.floor(diffMs / 3600000);
+                const mins = Math.floor((diffMs % 3600000) / 60000);
+                tempoStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+            }
 
             return `
             <tr class="hover:bg-slate-50 transition-colors">
@@ -1337,13 +1442,16 @@ const App = {
         }
         
         const BOM = "\uFEFF"; 
-        let csvContent = BOM + "Protocolo;Canal;Data Criacao;Data Fechamento;Tempo Total (Minutos);Cliente;Email Cliente;Motivo Original;Tag 1 (Motivo);Tag 2 (Submotivo);Observacoes (Agente);Agente;Nota NPS\n";
+        let csvContent = BOM + "Protocolo;Canal;Data Criacao;Data Atribuicao (Inicio Atend);Data Fechamento;TME Espera (Min);TMA Atendimento (Min);Cliente;Email Cliente;Motivo Original;Tag 1 (Motivo);Tag 2 (Submotivo);Observacoes (Agente);Agente;Nota NPS\n";
         
         this.dashboardTickets.filter(t => t.status === 'closed').forEach(t => {
-            const agentName = this.allProfiles.find(p => p.id === t.agent_id)?.full_name || 'Desconhecido';
+            const agentName = this.allProfiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema';
             const created = new Date(t.created_at);
             const closed = new Date(t.closed_at);
-            const diffMins = Math.floor((closed - created) / 60000);
+            const assigned = t.assigned_at ? new Date(t.assigned_at) : null;
+            
+            const tmeMins = assigned ? Math.floor((assigned - created) / 60000) : 0;
+            const tmaMins = assigned ? Math.floor((closed - assigned) / 60000) : 0;
             
             const safeNotes = t.agent_notes ? t.agent_notes.replace(/"/g, '""').replace(/\n/g, ' ') : '';
             
@@ -1351,8 +1459,10 @@ const App = {
                 `HZ-${t.protocol_number}`,
                 t.channel,
                 created.toLocaleString('pt-BR'),
+                assigned ? assigned.toLocaleString('pt-BR') : '',
                 closed.toLocaleString('pt-BR'),
-                diffMins,
+                tmeMins,
+                tmaMins,
                 t.customers?.full_name || '',
                 t.customers?.email || '',
                 t.ticket_subjects?.label || '',
@@ -1370,21 +1480,41 @@ const App = {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `horizon_relatorio_fechados_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute("download", `horizon_relatorio_${new Date().toISOString().split('T')[0]}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     },
 
+    // ==========================================
+    // GESTÃO DE EQUIPE (Atualizado com Busca e Grupos)
+    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 
-        const tbody = document.getElementById('team-tbody');
         
-        tbody.innerHTML = team.map(member => {
-            let onlineSecs = logs.filter(l => l.agent_id === member.id && l.status === 'online').reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
-            let pausaSecs = logs.filter(l => l.agent_id === member.id && l.status === 'pausa').reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
-            let backSecs = logs.filter(l => l.agent_id === member.id && l.status === 'backoffice').reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
+        // Armazena na memória para filtrar
+        this.allTeamProfiles = team;
+        this.allTeamLogs = logs;
+        
+        this.renderTeamTable();
+    },
+
+    filterTeamTable() {
+        this.teamSearchQuery = document.getElementById('team-search').value.toLowerCase();
+        this.renderTeamTable();
+    },
+
+    renderTeamTable() {
+        const tbody = document.getElementById('team-tbody');
+        if (!this.allTeamProfiles) return;
+
+        const filteredTeam = this.allTeamProfiles.filter(m => m.full_name.toLowerCase().includes(this.teamSearchQuery));
+
+        tbody.innerHTML = filteredTeam.map(member => {
+            let onlineSecs = this.allTeamLogs.filter(l => l.agent_id === member.id && l.status === 'online').reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
+            let pausaSecs = this.allTeamLogs.filter(l => l.agent_id === member.id && l.status === 'pausa').reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
+            let backSecs = this.allTeamLogs.filter(l => l.agent_id === member.id && l.status === 'backoffice').reduce((sum, l) => sum + (l.duration_seconds || 0), 0);
             
             if (member.status && member.status_updated_at) {
                 const currentSecs = Math.floor((Date.now() - new Date(member.status_updated_at).getTime()) / 1000);
@@ -1402,7 +1532,6 @@ const App = {
             
             let chatAguardando = agentTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             let chatBolha = agentTickets.filter(t => t.channel === 'web' && t.last_sender === 'agent').length;
-            
             let emailAguardando = agentTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
             let emailBolha = agentTickets.filter(t => t.channel === 'email' && t.last_sender === 'agent').length;
 
@@ -1454,10 +1583,13 @@ const App = {
             const chatBtn = member.id !== this.currentUser.id 
                 ? `<button onclick="agentApp.openInternalChat('${member.id}', '${member.full_name}')" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all flex items-center justify-center w-full gap-1"><span class="material-symbols-outlined text-[12px]">forum</span> Falar c/ Agente</button>` 
                 : '';
+            
+            // Controle de Grupo
+            const groupInput = `<input type="text" value="${member.team_group || 'Geral'}" onchange="agentApp.updateAgentGroup('${member.id}', this.value)" class="mt-2 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded p-1 w-full" placeholder="Grupo da Equipe...">`;
 
             return `
             <tr class="relative z-20 hover:bg-slate-50 transition-colors">
-                <td class="p-5 font-black text-slate-900">${member.full_name}<div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">${member.role}</div>${ticketsBadge}</td>
+                <td class="p-5 font-black text-slate-900">${member.full_name}<div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">${member.role}</div>${groupInput}${ticketsBadge}</td>
                 <td class="p-5">${timeHtml}</td>
                 <td class="p-5 w-[250px]">${skillsHTML}</td>
                 <td class="p-5 text-right w-36">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs mb-2">Aprovar</button>` : selStatus}${chatBtn}</td>

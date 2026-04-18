@@ -1,371 +1,311 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Horizon CRM - Console do Agente</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
-    <style>
-        body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; color: #191c1d; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        .hidden-view { display: none !important; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-    </style>
-</head>
-<body class="antialiased overflow-hidden relative">
+import { supabase } from '../supabase.js';
 
-    <section id="view-login" class="min-h-screen w-full flex flex-row relative z-50 bg-white">
-        <div class="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-slate-900 flex flex-col justify-center p-16 text-white">
-            <div class="z-10">
-                <div class="flex items-center gap-3 mb-6"><div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center"><span class="material-symbols-outlined text-white text-3xl">cloud</span></div><h1 class="text-3xl font-extrabold tracking-tight">Horizon CRM</h1></div>
-                <h2 class="text-6xl font-black leading-tight">Painel Operacional<br/><span class="text-blue-500">Realtime</span></h2>
-            </div>
-            <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-        </div>
-        
-        <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white z-10 shadow-2xl overflow-y-auto">
-            <div class="w-full max-w-md space-y-8">
-                <header>
-                    <h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3>
-                    <p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais.</p>
-                </header>
-                <form id="login-form" class="space-y-6">
-                    <div class="space-y-4">
-                        <input type="text" id="reg-name" class="hidden-view w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Nome Completo" />
-                        <input type="email" id="login-email" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="agente@horizon.com" required/>
-                        <input type="password" id="login-pass" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="••••••••" required/>
-                    </div>
-                    <button type="submit" id="btn-login" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2">
-                        Entrar <span class="material-symbols-outlined">login</span>
-                    </button>
-                    <div class="text-center mt-4">
-                        <button type="button" onclick="agentApp.toggleAuthMode()" id="btn-toggle-auth" class="text-sm font-bold text-slate-500 hover:text-blue-600">Não tem conta? Solicitar Acesso</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </section>
+export const agentAPI = {
+    async login(email, password) {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await this.changeStatus(data.user.id, 'online');
+        return data;
+    },
 
-    <div id="view-app" class="hidden-view h-screen flex relative z-10">
-        <div id="sidebar-root" class="h-full shrink-0 z-20 relative bg-slate-900"></div>
+    async setOffline(userId) {
+        await supabase.from('profiles').update({ is_online: false }).eq('id', userId);
+    },
 
-        <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
-            
-            <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 z-10 gap-4 relative">
-                <div class="text-sm font-bold text-slate-400 uppercase tracking-widest shrink-0">Console</div>
-                <div id="bubble-container" class="flex items-center gap-2 overflow-x-auto flex-1 px-4 py-1" style="scrollbar-width: none;"></div>
-                
-                <div class="flex items-center gap-4 shrink-0">
-                    <button id="btn-internal-alert" onclick="agentApp.openInternalChat(this.dataset.senderId, this.dataset.senderName)" class="hidden-view bg-red-100 text-red-600 px-3 py-1.5 rounded-full flex items-center gap-1 font-bold text-xs animate-bounce" title="Nova Mensagem Interna">
-                        <span class="material-symbols-outlined text-[16px]">forum</span> Chat
-                    </button>
+    async register(name, email, password) {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        if (data.user) {
+            await supabase.from('profiles').insert([{ id: data.user.id, full_name: name, email: email, is_approved: false, role: 'analista' }]);
+        }
+        return data;
+    },
 
-                    <button id="btn-settings" onclick="agentApp.navigate('settings')" class="hidden-view bg-slate-800 text-white px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-xs transition-colors hover:bg-slate-700" title="Configurações e Tags">
-                        <span class="material-symbols-outlined text-[16px]">settings</span> Configurações Gerais
-                    </button>
-                    
-                    <label id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200" title="Orquestrador Global">
-                        <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
-                        <input type="checkbox" id="toggle-routing" onchange="agentApp.toggleGlobalOrchestrator(this.checked)" class="sr-only peer">
-                        <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 relative"></div>
-                    </label>
-                    
-                    <select id="agent-status-select" class="bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-full px-3 py-1.5 outline-none cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
-                        <option value="online">🟢 Online</option>
-                        <option value="pausa">🟡 Em Pausa</option>
-                        <option value="backoffice">🟣 Backoffice</option>
-                        <option value="offline">⚫ Offline</option>
-                    </select>
-                </div>
-            </header>
+    async changeStatus(userId, newStatus) {
+        if (!userId) throw new Error("ID do agente ausente.");
+        const { data: profile, error: err1 } = await supabase.from('profiles').select('status, status_updated_at').eq('id', userId).single();
+        if (err1) throw err1;
 
-            <main class="flex-1 overflow-hidden relative z-10">
-                
-                <section id="sec-queue" class="p-8 h-full overflow-y-auto">
-                    <div class="max-w-6xl mx-auto h-full flex flex-col">
-                        <h2 class="text-3xl font-black text-slate-900 mb-6 flex justify-between items-center">
-                            Monitor de Atendimentos 
-                            <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full flex items-center" id="queue-count">0 tickets ativos</span>
-                        </h2>
-                        
-                        <div id="queue-gestor-view" class="bg-white rounded-3xl border shadow-sm overflow-hidden hidden-view">
-                            <table class="w-full text-left">
-                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                    <tr>
-                                        <th class="p-5">Protocolo</th>
-                                        <th class="p-5">Cliente / Assunto</th>
-                                        <th class="p-5">Status / Tempo</th>
-                                        <th class="p-5 text-right">Ação</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y" id="queue-tbody"></tbody>
-                            </table>
-                        </div>
+        if (profile.status && profile.status_updated_at) {
+            const startedAt = new Date(profile.status_updated_at);
+            const endedAt = new Date();
+            const durationSecs = Math.floor((endedAt - startedAt) / 1000);
+            await supabase.from('agent_status_logs').insert([{ agent_id: userId, status: profile.status, started_at: startedAt, ended_at: endedAt, duration_seconds: durationSecs }]);
+        }
+        const { error: err2 } = await supabase.from('profiles').update({ status: newStatus, status_updated_at: new Date() }).eq('id', userId);
+        if (err2) throw err2;
+    },
 
-                        <div id="queue-agent-view" class="flex-1 flex flex-col items-center justify-center text-center space-y-4 hidden-view">
-                            <div class="w-24 h-24 bg-blue-50 text-blue-300 rounded-full flex items-center justify-center">
-                                <span class="material-symbols-outlined text-5xl">support_agent</span>
-                            </div>
-                            <h3 class="text-2xl font-black text-slate-900">Aguardando Atribuição</h3>
-                            <p class="text-slate-500 font-medium max-w-md">O Orquestrador enviará novos chamados automaticamente.<br>Fique atento às bolhas no cabeçalho.</p>
-                        </div>
-                    </div>
-                </section>
-                
-                <section id="sec-team" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-6xl mx-auto">
-                        <h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2>
-                        <div class="bg-white rounded-3xl border shadow-sm overflow-hidden">
-                            <table class="w-full text-left">
-                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                    <tr>
-                                        <th class="p-5 w-1/4">Analista</th>
-                                        <th class="p-5 w-1/4">Status e Ponto (Hoje)</th>
-                                        <th class="p-5 w-2/4">Canais e Skills</th>
-                                        <th class="p-5 text-right w-32">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y" id="team-tbody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
+    async getPendingTickets() {
+        const { data, error } = await supabase.from('tickets')
+            .select(`id, protocol_number, channel, created_at, assigned_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
+            .in('status', ['open', 'in_progress'])
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
+    },
 
-                <section id="sec-dashboard" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-6xl mx-auto space-y-8">
-                        
-                        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
-                            <div>
-                                <h2 class="text-3xl font-black text-slate-900">Dashboard & Relatórios</h2>
-                                <p class="text-slate-500 text-sm font-medium mt-1">Análise de performance e histórico de casos fechados.</p>
-                            </div>
-                            <div class="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Período:</span>
-                                <input type="date" id="dash-start" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500">
-                                <span class="text-slate-400 font-bold text-xs">até</span>
-                                <input type="date" id="dash-end" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500">
-                                <button onclick="agentApp.renderDashboard()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1">
-                                    <span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar
-                                </button>
-                                <button onclick="agentApp.exportCSV()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1 ml-auto">
-                                    <span class="material-symbols-outlined text-[14px]">download</span> Exportar CSV
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total no Período</div>
-                                <div class="text-4xl font-black text-slate-900" id="stat-total">0</div>
-                            </div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div>
-                                <div class="text-4xl font-black text-blue-600" id="stat-open">0</div>
-                            </div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS (Fechados)</div>
-                                <div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div>
-                            </div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Vendas (Período)</div>
-                                <div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div>
-                            </div>
-                        </div>
+    async getDashboardTickets(startDate, endDate) {
+        let query = supabase.from('tickets').select(`id, protocol_number, channel, created_at, assigned_at, closed_at, status, agent_id, rating, agent_tag1, agent_tag2, agent_notes, customers(full_name, email), ticket_subjects(label)`);
+        if (startDate) query = query.gte('created_at', startDate + 'T00:00:00.000Z');
+        if (endDate) query = query.lte('created_at', endDate + 'T23:59:59.999Z');
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
 
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center">
-                                <h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3>
-                                <div class="relative w-full max-w-[300px] aspect-square"><canvas id="chartStatus"></canvas></div>
-                            </div>
-                            <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col">
-                                <div class="flex justify-between items-center border-b pb-4 mb-6">
-                                    <h3 class="font-black text-slate-900 uppercase text-xs tracking-widest">Ranking de Analistas (NPS)</h3>
-                                    <span class="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded">Clique p/ Filtrar Tabela</span>
-                                </div>
-                                <div id="analyst-ranking" class="space-y-3 overflow-y-auto flex-1 pr-2"></div>
-                            </div>
-                        </div>
+    async getTicketDetails(ticketId) {
+        const { data, error } = await supabase.from('tickets')
+            .select(`*, customers (*), ticket_subjects (label)`)
+            .eq('id', ticketId).single();
+        if (error) throw error;
+        return data;
+    },
 
-                        <div class="bg-white rounded-3xl border shadow-sm overflow-hidden mt-8 flex flex-col">
-                            <div class="p-6 border-b bg-slate-50 flex justify-between items-center">
-                                <h3 class="font-black text-slate-900 flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-slate-400">inventory_2</span> Casos Fechados no Período
-                                </h3>
-                                <div id="active-filter-badge" class="hidden-view bg-blue-100 text-blue-700 text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1">
-                                    Filtro Ativo: <span id="active-filter-name"></span>
-                                    <button onclick="agentApp.filterDashboardByAgent(null)" class="hover:text-red-600 ml-1"><span class="material-symbols-outlined text-[12px]">close</span></button>
-                                </div>
-                            </div>
-                            <div class="overflow-x-auto max-h-[500px]">
-                                <table class="w-full text-left whitespace-nowrap">
-                                    <thead class="bg-white border-b text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-10 shadow-sm">
-                                        <tr>
-                                            <th class="p-4">Protocolo</th>
-                                            <th class="p-4">Cliente / Motivo Original</th>
-                                            <th class="p-4">Tags (Agente)</th>
-                                            <th class="p-4">Analista</th>
-                                            <th class="p-4">Tempo Atend.</th>
-                                            <th class="p-4 text-center">NPS</th>
-                                            <th class="p-4 text-right">Ação</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y bg-white" id="closed-cases-tbody">
-                                        </tbody>
-                                </table>
-                            </div>
-                        </div>
+    async closeTicket(ticketId, tag1, tag2, notes) {
+        const { error } = await supabase.from('tickets').update({ 
+            status: 'closed', 
+            agent_tag1: tag1,
+            agent_tag2: tag2,
+            agent_notes: notes,
+            closed_at: new Date(), 
+            is_upload_enabled: false 
+        }).eq('id', ticketId);
+        if (error) throw error;
+    },
 
-                    </div>
-                </section>
+    async transferTicket(ticketId, newSubjectId, newAgentId, notes) {
+        const updates = { 
+            agent_notes: notes,
+            status: 'open', 
+            last_interaction_at: new Date(), 
+            is_upload_enabled: false,
+            assigned_at: null 
+        };
+        if (newAgentId) { updates.agent_id = newAgentId; updates.assigned_at = new Date(); updates.status = 'in_progress'; } 
+        else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
+        const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
+        if (error) throw error;
+    },
 
-                <section id="sec-settings" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-4xl mx-auto space-y-8">
-                        <h2 class="text-3xl font-black text-slate-900">Configurações do Sistema</h2>
-                        <div class="bg-white p-8 rounded-3xl border shadow-sm space-y-6">
-                            
-                            <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2">
-                                <span class="material-symbols-outlined text-blue-600">group_add</span> Limites de Distribuição (Orquestrador)
-                            </h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-500 mb-2">Max. CHATS Simultâneos por Analista</label>
-                                    <input type="number" id="cfg-max-chat" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-500 mb-2">Max. E-MAILS Simultâneos por Analista</label>
-                                    <input type="number" id="cfg-max-email" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1">
-                                </div>
-                            </div>
+    async releaseMyTickets(agentId) {
+        if (!agentId) throw new Error("ID do agente é obrigatório.");
+        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false, assigned_at: null }).eq('agent_id', agentId).eq('status', 'in_progress');
+        if (error) throw error;
+    },
 
-                            <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2 mt-6">
-                                <span class="material-symbols-outlined text-blue-600">timer</span> Encerramento Automático (SLA Inatividade)
-                            </h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite CHAT (Minutos)</label>
-                                    <input type="number" id="cfg-chat-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite E-MAIL (Horas)</label>
-                                    <input type="number" id="cfg-email-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1">
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem (Macro) de Encerramento Automático</label>
-                                <div class="flex gap-2 mb-3">
-                                    <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
-                                    <button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
-                                </div>
-                                <textarea id="cfg-macro" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium resize-y h-48 leading-relaxed"></textarea>
-                            </div>
-                            
-                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8">
-                                <span class="material-symbols-outlined">save</span> Salvar Configurações Gerais
-                            </button>
-                            
-                            <div class="border-t pt-8 mt-8">
-                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)
-                                </h3>
-                                <div class="flex gap-2 mb-6">
-                                    <input type="text" id="new-tag1-input" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Novo Motivo Principal (Ex: Financeiro, Dúvidas...)">
-                                    <button onclick="agentApp.addTag1()" class="bg-slate-800 text-white px-8 rounded-xl font-bold hover:bg-slate-900 transition-colors shadow-md">Adicionar Motivo</button>
-                                </div>
-                                <div id="settings-tags-list" class="space-y-4"></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+    async releaseTicketsByChannel(agentId, channel) {
+        if (!agentId) throw new Error("ID do agente é obrigatório.");
+        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false, assigned_at: null }).eq('agent_id', agentId).eq('channel', channel).eq('status', 'in_progress');
+        if (error) throw error;
+    },
 
-                <section id="sec-chat" class="h-full hidden-view flex overflow-hidden">
-                    <div class="flex-1 flex flex-col bg-white border-r relative z-10">
-                        <header class="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0 relative z-20">
-                            <div>
-                                <h3 class="font-black text-slate-900 flex items-center gap-2" id="chat-header-name">Cliente</h3>
-                                <div class="flex items-center gap-3 mt-1">
-                                    <span class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">tag</span> <span id="chat-header-protocol">---</span></span>
-                                    <span class="text-[10px] font-black text-slate-500 bg-slate-200 px-2 py-0.5 rounded flex items-center gap-1" id="chat-header-channel"></span>
-                                    <span class="text-xs font-bold text-slate-500 truncate max-w-[200px]" id="chat-header-subject">• Assunto</span>
-                                </div>
-                            </div>
-                        </header>
-                        <div id="chat-mode-container" class="flex-1 flex flex-col overflow-hidden hidden-view">
-                            <div id="chat-history" class="flex-1 overflow-y-auto p-6 space-y-4 relative z-10"></div>
-                            <form id="agent-chat-form" class="p-4 bg-white border-t shrink-0 flex items-center gap-3 relative z-20">
-                                <div class="flex items-center gap-2 border-r pr-3 shrink-0"><span class="text-[10px] font-bold text-slate-500 uppercase" id="upload-status-text">Anexos (Cli): Off</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="toggle-upload" class="sr-only peer"><div class="w-7 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div></label></div>
-                                <input type="file" id="agent-file-input" class="hidden-view" accept="image/*,.pdf,.doc,.docx">
-                                <button type="button" id="btn-agent-attach" class="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors" title="Enviar Arquivo"><span class="material-symbols-outlined">attach_file</span></button>
-                                <input type="text" id="chat-input" class="flex-1 bg-slate-100 p-3 rounded-xl outline-none font-medium" placeholder="Digite sua resposta..." autocomplete="off">
-                                <button type="submit" id="btn-send-chat" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition-colors flex items-center justify-center">Enviar</button>
-                            </form>
-                        </div>
-                        <div id="email-mode-container" class="flex-1 flex flex-col overflow-hidden bg-slate-100 hidden-view">
-                            <div class="flex-1 overflow-y-auto p-6 space-y-6 relative z-10" id="email-thread"></div>
-                            <form id="agent-email-form" class="p-6 bg-white border-t shrink-0 relative z-20 flex flex-col gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-                                <h4 class="text-xs font-black text-blue-600 uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">reply</span> Responder por E-mail</h4>
-                                <textarea id="email-input" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl outline-none font-medium resize-none focus:ring-2 focus:ring-blue-600" rows="5" placeholder="Escreva sua resposta para o cliente..." required></textarea>
-                                <div class="flex justify-between items-center mt-2"><input type="file" id="email-file-input" class="hidden-view" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"><button type="button" id="btn-email-attach" class="bg-slate-100 text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-2 font-bold text-xs" title="Anexar Arquivo"><span class="material-symbols-outlined text-[16px]">attach_file</span> Anexar Arquivo</button><button type="submit" id="btn-send-email" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold shadow-md transition-colors flex items-center justify-center gap-2">Responder <span class="material-symbols-outlined text-[18px]">send</span></button></div>
-                            </form>
-                        </div>
-                    </div>
-                    <div class="w-[380px] bg-white border-l overflow-y-auto flex flex-col shrink-0 relative z-20">
-                        <div class="flex border-b text-[10px] font-black uppercase tracking-widest text-slate-400 shrink-0 sticky top-0 bg-white z-10"><button onclick="agentApp.switchTab('crm-info')" id="tab-info" class="flex-1 p-4 border-b-2 border-blue-600 text-blue-600 transition-colors">Dados</button><button onclick="agentApp.switchTab('crm-history')" id="tab-history" class="flex-1 p-4 border-b-2 border-transparent hover:bg-slate-50 transition-colors">Histórico</button><button onclick="agentApp.switchTab('crm-orders')" id="tab-orders" class="flex-1 p-4 border-b-2 border-transparent hover:bg-slate-50 transition-colors">Pedidos</button></div>
-                        <div class="p-6 flex-1 flex flex-col">
-                            <div id="view-crm-info" class="space-y-6 flex-1">
-                                <div><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Informações</h4><div class="bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="font-black text-slate-900 text-base" id="crm-name">...</div><div class="text-xs font-bold text-slate-500 mt-1 truncate" id="crm-email">...</div></div></div>
-                                <div>
-                                    <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Classificação e Notas</h4>
-                                    <div class="text-[10px] font-bold text-slate-500 mb-2">Motivo Original (Cliente): <span id="crm-customer-tag" class="text-blue-600"></span></div>
-                                    <select id="crm-tag1" onchange="agentApp.filterTag2()" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-2 outline-none text-slate-700 focus:ring-2 focus:ring-blue-600"><option value="">Selecione o Motivo (Tag 1)...</option></select>
-                                    <select id="crm-tag2" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-3 outline-none text-slate-700 focus:ring-2 focus:ring-blue-600"><option value="">Selecione o Submotivo (Tag 2)...</option></select>
-                                    <textarea id="crm-notes" class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm outline-none resize-none font-medium focus:ring-2 focus:ring-blue-600" rows="3" placeholder="Observações do atendimento (Obrigatório para fechar)..."></textarea>
-                                </div>
-                                <div class="border-t pt-5"><h4 class="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-3">Transferência</h4><select id="transfer-subject" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-2 outline-none text-slate-700"></select><select id="transfer-agent" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-3 outline-none text-slate-700"></select><button type="button" onclick="agentApp.transferTicket()" class="w-full bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all">Transferir Chamado</button></div>
-                            </div>
-                            <div id="view-crm-history" class="hidden-view space-y-4 flex-1"><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Últimos Atendimentos</h4><div id="history-list" class="space-y-3"></div></div>
-                            <div id="view-crm-orders" class="hidden-view space-y-6 flex-1 flex flex-col"><div class="flex justify-between items-center shrink-0"><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Compras</h4><button onclick="agentApp.showNewOrderForm()" class="text-[10px] font-black bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">Novo Pedido</button></div><div id="order-form" class="hidden-view bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 shrink-0"><input type="text" id="order-product" placeholder="Produto" class="w-full p-2 text-xs font-bold border rounded-lg outline-none"><div class="flex gap-2"><input type="number" id="order-qty" placeholder="Qtd" class="w-1/3 p-2 text-xs font-bold border rounded-lg outline-none" min="1" value="1"><input type="text" id="order-amount" placeholder="Valor (ex: 99.90)" class="w-2/3 p-2 text-xs font-bold border rounded-lg outline-none"></div><button onclick="agentApp.saveOrder()" class="w-full bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold py-2 rounded-lg">Salvar Compra</button></div><div id="order-list" class="space-y-2 overflow-y-auto flex-1"></div></div>
-                            <div class="mt-6 pt-6 border-t shrink-0"><button type="button" onclick="agentApp.closeTicket()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"><span class="material-symbols-outlined">check_circle</span> Finalizar Atendimento</button></div>
-                        </div>
-                    </div>
-                </section>
-            </main>
-        </div>
-    </div>
+    async reassignTicket(ticketId, newAgentId) {
+        const updates = newAgentId ? { agent_id: newAgentId, status: 'in_progress', assigned_at: new Date(), last_interaction_at: new Date() } : { agent_id: null, status: 'open', assigned_at: null, last_interaction_at: new Date() };
+        const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
+        if (error) throw error;
+    },
+
+    async getActiveAgents() {
+        const { data, error } = await supabase.from('profiles').select('id, full_name, can_web, can_email, status, team_group').eq('is_approved', true).eq('status', 'online').order('full_name');
+        if (error) throw error;
+        return data;
+    },
+
+    async getMessages(ticketId) {
+        const { data, error } = await supabase.from('messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
+    },
+
+    async uploadFile(file) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const { error } = await supabase.storage.from('attachments').upload(fileName, file);
+        if (error) throw error;
+        const { data } = supabase.storage.from('attachments').getPublicUrl(fileName);
+        return { url: data.publicUrl, name: file.name, type: file.type };
+    },
     
-    <div id="modal-history" class="hidden-view fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-6">
-        <div class="bg-white w-full max-w-3xl rounded-3xl flex flex-col max-h-[90vh] shadow-2xl">
-            <header class="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-3xl">
-                <div>
-                    <h3 class="font-black text-slate-900">Histórico de Atendimento</h3>
-                    <div class="text-xs font-bold text-slate-500 mt-1" id="modal-history-protocol"></div>
-                </div>
-                <button onclick="document.getElementById('modal-history').classList.add('hidden-view')" class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center hover:bg-slate-300 transition-colors"><span class="material-symbols-outlined text-slate-600">close</span></button>
-            </header>
-            <div id="history-chat-content" class="flex-1 overflow-y-auto p-6 bg-slate-50/50"></div>
-        </div>
-    </div>
+    async sendMessage(ticketId, content, fileData = null) {
+        const payload = { ticket_id: ticketId, sender_type: 'agent', content: content };
+        if (fileData) { payload.file_url = fileData.url; payload.file_name = fileData.name; payload.file_type = fileData.type; }
+        const { error: msgErr } = await supabase.from('messages').insert([payload]);
+        if (msgErr) throw msgErr;
+        
+        const { error: tkErr } = await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date(), has_warning_sent: false }).eq('id', ticketId);
+        if (tkErr) throw tkErr;
+    },
 
-    <div id="modal-monitor" class="hidden-view fixed inset-0 bg-slate-900/80 z-[110] flex items-center justify-center p-6">
-        <div class="bg-white w-full max-w-2xl rounded-3xl flex flex-col max-h-[80vh] shadow-2xl">
-            <header class="p-6 border-b flex justify-between items-center bg-blue-50 rounded-t-3xl"><div class="flex items-center gap-4"><span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span></span><div><h3 class="font-black text-blue-900">Monitoria Silenciosa</h3><div class="text-xs font-bold text-blue-600 mt-1" id="modal-monitor-protocol"></div></div></div><button onclick="agentApp.closeMonitor()" class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors"><span class="material-symbols-outlined text-blue-700">close</span></button></header>
-            <div id="monitor-chat-content" class="flex-1 overflow-y-auto p-6 space-y-4 bg-white"></div>
-        </div>
-    </div>
+    async sendWarningMacro(ticketId, content) {
+        const payload = { ticket_id: ticketId, sender_type: 'agent', content: content };
+        const { error: msgErr } = await supabase.from('messages').insert([payload]);
+        if (msgErr) throw msgErr;
+        
+        const { error: tkErr } = await supabase.from('tickets').update({ has_warning_sent: true }).eq('id', ticketId);
+        if (tkErr) throw tkErr;
+    },
 
-    <div id="modal-internal-chat" class="hidden-view fixed inset-0 bg-slate-900/80 z-[120] flex items-center justify-center p-6">
-        <div class="bg-white w-full max-w-md rounded-3xl flex flex-col max-h-[80vh] shadow-2xl">
-            <header class="p-4 border-b flex justify-between items-center bg-slate-800 rounded-t-3xl text-white"><div><h3 class="font-black text-sm flex items-center gap-2"><span class="material-symbols-outlined text-green-400">forum</span> Chat Interno</h3><div class="text-xs font-medium text-slate-300 mt-1" id="internal-chat-target-name">...</div></div><button onclick="agentApp.closeInternalChat()" class="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 transition-colors"><span class="material-symbols-outlined text-white text-sm">close</span></button></header>
-            <div id="internal-chat-content" class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50"></div>
-            <form id="internal-chat-form" class="p-3 bg-white border-t rounded-b-3xl flex gap-2"><input type="text" id="internal-chat-input" class="flex-1 bg-slate-100 p-2 rounded-lg outline-none font-medium text-sm" placeholder="Mensagem..." autocomplete="off" required><button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-4 rounded-lg font-bold transition-colors"><span class="material-symbols-outlined text-[18px]">send</span></button></form>
-        </div>
-    </div>
+    async toggleUpload(ticketId, isEnabled) {
+        const { error } = await supabase.from('tickets').update({ is_upload_enabled: isEnabled }).eq('id', ticketId);
+        if (error) throw error;
+    },
+    
+    async getSystemSettings() {
+        const { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single();
+        if (error) throw error;
+        return data;
+    },
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script type="module" src="js/agent/app.js"></script>
-</body>
-</html>
+    async updateSystemSettings(settings) {
+        const { error } = await supabase.from('system_settings').update(settings).eq('id', 1);
+        if (error) throw error;
+    },
+    
+    async getCustomerHistoryByEmail(email) {
+        const { data, error } = await supabase.from('tickets').select(`*, customers!inner(email), ticket_subjects(label)`).eq('customers.email', email).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async getCustomerOrders(customerId) {
+        const { data, error } = await supabase.from('orders').select('*').eq('customer_id', customerId).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async createOrder(orderData) {
+        const { error } = await supabase.from('orders').insert([orderData]);
+        if (error) throw error;
+    },
+
+    async getTeamProfiles() {
+        const { data, error } = await supabase.from('profiles').select('*, agent_skills(subject_id)').order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
+    },
+
+    async getAgentLogsToday() {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const { data, error } = await supabase.from('agent_status_logs').select('*').gte('started_at', today.toISOString());
+        if (error) throw error;
+        return data;
+    },
+
+    async updateAgentLimits(agentId, maxChats, maxEmails) {
+        const updates = {};
+        if (maxChats !== null && maxChats !== undefined) updates.max_chats = parseInt(maxChats);
+        if (maxEmails !== null && maxEmails !== undefined) updates.max_emails = parseInt(maxEmails);
+        if (Object.keys(updates).length > 0) {
+            const { error } = await supabase.from('profiles').update(updates).eq('id', agentId);
+            if (error) throw error;
+        }
+    },
+
+    async updateAgentGroup(agentId, groupName) {
+        const { error } = await supabase.from('profiles').update({ team_group: groupName || 'Geral' }).eq('id', agentId);
+        if (error) throw error;
+    },
+
+    async getAllSubjects() {
+        const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
+        if (error) throw error;
+        return data;
+    },
+
+    async getAllSubsubjects() {
+        const { data, error } = await supabase.from('ticket_subsubjects').select('*').eq('is_active', true);
+        if (error) throw error;
+        return data;
+    },
+
+    async createSubject(label) {
+        const { error } = await supabase.from('ticket_subjects').insert([{ label }]);
+        if (error) throw error;
+    },
+
+    async createSubsubject(subjectId, label) {
+        const { error } = await supabase.from('ticket_subsubjects').insert([{ subject_id: subjectId, label }]);
+        if (error) throw error;
+    },
+
+    async toggleSubject(id, isActive) {
+        const { error } = await supabase.from('ticket_subjects').update({ is_active: isActive }).eq('id', id);
+        if (error) throw error;
+    },
+
+    async toggleSubsubject(id, isActive) {
+        const { error } = await supabase.from('ticket_subsubjects').update({ is_active: isActive }).eq('id', id);
+        if (error) throw error;
+    },
+
+    async approveUser(userId, role) {
+        const { error } = await supabase.from('profiles').update({ is_approved: true, role: role }).eq('id', userId);
+        if (error) throw error;
+    },
+
+    async updateRoutingStatus(userId, isActive) {
+        const { error } = await supabase.from('profiles').update({ is_routing_active: isActive }).eq('id', userId);
+        if (error) throw error;
+    },
+
+    async toggleChannel(agentId, channel, isEnabled) {
+        const col = channel === 'web' ? 'can_web' : 'can_email';
+        const { error } = await supabase.from('profiles').update({ [col]: isEnabled }).eq('id', agentId);
+        if (error) throw error;
+    },
+
+    async toggleAgentSkill(agentId, subjectId, isAdding) {
+        if (isAdding) {
+            const { error } = await supabase.from('agent_skills').insert([{ agent_id: agentId, subject_id: subjectId }]);
+            if (error) throw error;
+        } else {
+            const { error } = await supabase.from('agent_skills').delete().eq('agent_id', agentId).eq('subject_id', subjectId);
+            if (error) throw error;
+        }
+    },
+
+    async getInternalMessages(user1, user2) {
+        if (!user1 || !user2) return []; 
+        const { data, error } = await supabase.from('internal_messages').select('*').or(`sender_id.eq.${user1},receiver_id.eq.${user1}`);
+        if (error) throw error;
+        return data.filter(m => (m.sender_id === user1 && m.receiver_id === user2) || (m.sender_id === user2 && m.receiver_id === user1)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    },
+
+    async sendInternalMessage(senderId, receiverId, content) {
+        const { error } = await supabase.from('internal_messages').insert([{ sender_id: senderId, receiver_id: receiverId, content: content }]);
+        if (error) throw error;
+    },
+
+    subscribeToQueue(onUpdateCallback) {
+        return supabase.channel('agent-queue').on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => onUpdateCallback()).subscribe();
+    },
+
+    subscribeToMessages(ticketId, onNewMessage) {
+        return supabase.channel(`ticket-${ticketId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
+            if (payload.new.sender_type === 'customer') { onNewMessage(payload.new.content, payload.new.file_url, payload.new.file_name, payload.new.file_type); }
+        }).subscribe();
+    },
+
+    subscribeToAllMessages(ticketId, onNewMessage) {
+        return supabase.channel(`monitor-${ticketId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
+            onNewMessage(payload.new.content, payload.new.sender_type, payload.new.created_at, payload.new.file_url, payload.new.file_name, payload.new.file_type);
+        }).subscribe();
+    },
+
+    subscribeToProfiles(callback) {
+        return supabase.channel('global-profiles').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => callback()).subscribe();
+    },
+    
+    subscribeToMyProfile(myId, callback) {
+        return supabase.channel('my-profile').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${myId}` }, payload => callback(payload.new)).subscribe();
+    },
+    
+    subscribeToSettings(callback) {
+        return supabase.channel('sys-settings').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'system_settings', filter: `id=eq.1` }, payload => callback(payload.new)).subscribe();
+    },
+
+    subscribeToInternalMessages(myId, callback) {
+        return supabase.channel('internal-chat').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'internal_messages', filter: `receiver_id=eq.${myId}` }, payload => callback(payload.new)).subscribe();
+    }
+};
