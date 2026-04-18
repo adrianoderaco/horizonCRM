@@ -333,7 +333,19 @@ const App = {
             msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
 
             if (this.messageSub) this.messageSub.unsubscribe();
-            this.messageSub = agentAPI.subscribeToMessages(id, (msg) => this.renderMsg(msg, 'customer'));
+            
+            // INTEGRAÇÃO INSTANTÂNEA NA BOLHA QUANDO O CLIENTE RESPONDE:
+            this.messageSub = agentAPI.subscribeToMessages(id, (msg) => {
+                this.renderMsg(msg, 'customer');
+                
+                // Pinta a bolha de azul na hora
+                const tkIndex = this.activeTickets.findIndex(tk => tk.id === id);
+                if (tkIndex > -1) {
+                    this.activeTickets[tkIndex].last_sender = 'customer';
+                    this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString();
+                    this.renderBubbles();
+                }
+            });
             
         } catch (e) {
             console.error("Erro Crítico ao abrir chat:", e);
