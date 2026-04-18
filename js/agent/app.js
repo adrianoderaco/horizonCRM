@@ -20,7 +20,6 @@ const App = {
     systemSettings: null,
     closingTickets: new Set(),
     
-    // DASHBOARD FILTERS
     dashboardTickets: [],
     allProfiles: [],
     dashFilterAgent: null,
@@ -32,10 +31,18 @@ const App = {
             this.systemSettings = await agentAPI.getSystemSettings();
         } catch (e) {
             console.warn("Aviso: Configurações ausentes. Usando locais.");
-            this.systemSettings = { is_orchestrator_active: false, chat_timeout_min: 10, email_timeout_hr: 24, closure_macro: "Encerrado." };
+            this.systemSettings = { 
+                is_orchestrator_active: false, 
+                chat_timeout_min: 10, 
+                email_timeout_hr: 24, 
+                chat_warning_min: 8, 
+                email_warning_hr: 20, 
+                warning_macro_chat: "Olá, ainda está aí? Responderemos em breve.", 
+                warning_macro_email: "Oi, estamos aguardando retorno.", 
+                closure_macro: "Encerrado." 
+            };
         }
 
-        // Set default dates for Dashboard
         const today = new Date();
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         document.getElementById('dash-start').value = firstDay.toISOString().split('T')[0];
@@ -116,9 +123,6 @@ const App = {
 
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
-                    if (this.currentUser && this.currentUser.status === 'online') {
-                        Orchestrator.findAndClaimNext();
-                    }
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
                         this.renderDashboard();
                     }
@@ -219,7 +223,7 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 input.value = ''; 
                 
-                await agentAPI.closeTicket(this.activeTicketId, '', '', 'E-mail respondido (Aguardando cliente)');
+                await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido', '', 'Aguardando cliente');
                 
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
                 this.activeTicketId = null;
@@ -267,7 +271,7 @@ const App = {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador.");
+            alert("Erro ao alterar Orquestrador Global.");
         }
     },
 
@@ -298,7 +302,7 @@ const App = {
                         this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); 
                     }
                 } catch(err) { 
-                    alert("Erro no upload."); 
+                    alert("Erro no upload do arquivo."); 
                 } finally { 
                     btnSend.innerHTML = origText; 
                     btnSend.disabled = false; 
@@ -334,6 +338,7 @@ const App = {
                 this.loadQueue();
             } else {
                 Orchestrator.setStatus(true);
+                Orchestrator.findAndClaimNext(); // Força puxar imediatamente
                 this.loadQueue();
             }
         } catch (e) { 
@@ -406,8 +411,10 @@ const App = {
             });
 
             if (this.systemSettings && this.currentUser) {
-                const chatLimitSecs = this.systemSettings.chat_timeout_min * 60;
-                const emailLimitSecs = this.systemSettings.email_timeout_hr * 3600;
+                const chatWarnSecs = (this.systemSettings.chat_warning_min || 8) * 60;
+                const emailWarnSecs = (this.systemSettings.email_warning_hr || 24) * 3600;
+                const chatCloseSecs = (this.systemSettings.chat_timeout_min || 10) * 60;
+                const emailCloseSecs = (this.systemSettings.email_timeout_hr || 48) * 3600;
 
                 this.activeTickets.forEach(t => {
                     if (t.agent_id !== this.currentUser.id) return;
@@ -424,7 +431,7 @@ const App = {
                         } else {
                             el.classList.remove('animate-pulse');
                             const diffMinutes = Math.floor(diffSeconds / 60);
-                            const maxFadingMins = t.channel === 'web' ? this.systemSettings.chat_timeout_min : 60; 
+                            const maxFadingMins = t.channel === 'web' ? (this.systemSettings.chat_timeout_min || 10) : 60; 
                             
                             const opacity = Math.max(0.15, 1 - (diffMinutes / maxFadingMins));
                             el.style.backgroundColor = `rgba(37, 99, 235, ${opacity})`;
@@ -432,9 +439,23 @@ const App = {
                         }
                     }
 
+                    // SLA: Se o Agente foi o último a falar, conta o tempo.
                     if (t.last_sender === 'agent' && !this.closingTickets.has(t.id)) {
-                        const isWebClose = t.channel === 'web' && diffSeconds >= chatLimitSecs;
-                        const isEmailClose = t.channel === 'email' && diffSeconds >= emailLimitSecs;
+                        
+                        // 1. Fase de Alerta
+                        if (!t.has_warning_sent) {
+                            const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
+                            const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
+                            
+                            if (isWebWarn || isEmailWarn) {
+                                t.has_warning_sent = true; // Atualiza a flag localmente para não repetir
+                                this.executeWarning(t);
+                            }
+                        }
+
+                        // 2. Fase de Encerramento Total
+                        const isWebClose = t.channel === 'web' && diffSeconds >= chatCloseSecs;
+                        const isEmailClose = t.channel === 'email' && diffSeconds >= emailCloseSecs;
 
                         if (isWebClose || isEmailClose) {
                             this.closingTickets.add(t.id);
@@ -446,8 +467,27 @@ const App = {
         }, 1000);
     },
 
+    async executeWarning(ticket) {
+        try {
+            console.log(`[SLA] Enviando Alerta de Ociosidade para HZ-${ticket.protocol_number}`);
+            let msg = ticket.channel === 'web' ? this.systemSettings.warning_macro_chat : this.systemSettings.warning_macro_email;
+            msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
+            msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
+
+            await agentAPI.sendWarningMacro(ticket.id, msg);
+            
+            // Se o agente estiver com essa janela aberta agora, mostra na tela
+            if (this.activeTicketId === ticket.id) {
+                this.renderMsg(msg, 'agent');
+            }
+        } catch(e) {
+            console.error("Falha ao enviar alerta:", e);
+        }
+    },
+
     async executeAutoClose(ticket) {
         try {
+            console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
             let msg = this.systemSettings.closure_macro;
             msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
@@ -463,7 +503,7 @@ const App = {
             }
             this.loadQueue();
         } catch(e) { 
-            console.error("Falha macro:", e); 
+            console.error("Falha na macro de encerramento:", e); 
         } finally { 
             this.closingTickets.delete(ticket.id); 
         }
@@ -521,15 +561,21 @@ const App = {
     async loadSettingsUI() {
         try {
             const cfg = await agentAPI.getSystemSettings();
+            document.getElementById('cfg-chat-warn-time').value = cfg.chat_warning_min || 8;
             document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
-            document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 24;
+            
+            document.getElementById('cfg-email-warn-time').value = cfg.email_warning_hr || 24;
+            document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 48;
+            
+            document.getElementById('cfg-macro-warn-chat').value = cfg.warning_macro_chat || '';
+            document.getElementById('cfg-macro-warn-email').value = cfg.warning_macro_email || '';
             document.getElementById('cfg-macro').value = cfg.closure_macro || '';
             
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
             this.renderSettingsTags();
 
-        } catch(e) { console.error("Erro UI de configurações", e); }
+        } catch(e) { console.error("Erro na tela de UI de configurações", e); }
     },
 
     renderSettingsTags() {
@@ -616,12 +662,16 @@ const App = {
         btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
         try {
             const payload = { 
+                chat_warning_min: parseInt(document.getElementById('cfg-chat-warn-time').value), 
                 chat_timeout_min: parseInt(document.getElementById('cfg-chat-time').value), 
+                email_warning_hr: parseInt(document.getElementById('cfg-email-warn-time').value), 
                 email_timeout_hr: parseInt(document.getElementById('cfg-email-time').value), 
+                warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, 
+                warning_macro_email: document.getElementById('cfg-macro-warn-email').value, 
                 closure_macro: document.getElementById('cfg-macro').value 
             };
             await agentAPI.updateSystemSettings(payload); 
-            this.systemSettings = payload; 
+            this.systemSettings = Object.assign({}, this.systemSettings, payload);
             alert("Configurações atualizadas!");
         } catch (e) { 
             alert("Erro ao salvar as configurações."); 
@@ -673,6 +723,8 @@ const App = {
                 const inProg = t.status === 'in_progress';
                 const isMine = t.agent_id === this.currentUser.id;
                 
+                const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
+
                 let statusHtml = `
                 <div class="flex flex-col gap-1 items-start">
                     ${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}
@@ -734,33 +786,8 @@ const App = {
         content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando a conversa...</div>';
         
         try {
-            const ticket = await agentAPI.getTicketDetails(ticketId); 
             const msgs = await agentAPI.getMessages(ticketId);
-            
-            let html = `
-            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 relative z-20">
-                <h4 class="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">summarize</span> Resumo do Atendimento</h4>
-                <div class="grid grid-cols-2 gap-4 text-xs mb-3">
-                    <div>
-                        <div class="font-bold text-blue-900 mb-1">Motivo (Tag 1):</div>
-                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não classificado'}</div>
-                    </div>
-                    <div>
-                        <div class="font-bold text-blue-900 mb-1">Submotivo (Tag 2):</div>
-                        <div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não classificado'}</div>
-                    </div>
-                </div>
-                <div class="text-xs">
-                    <div class="font-bold text-blue-900 mb-1">Observações do Analista:</div>
-                    <div class="text-blue-800 italic bg-white/60 border border-blue-100 p-3 rounded-lg">${ticket.agent_notes || 'Nenhuma observação registrada.'}</div>
-                </div>
-            </div>
-            <div class="h-px bg-slate-200 mb-4"></div>
-            `;
-            
-            html += msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
-            
-            content.innerHTML = html;
+            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
             content.scrollTop = content.scrollHeight;
             
             if (this.monitorSub) this.monitorSub.unsubscribe();
@@ -770,18 +797,18 @@ const App = {
                 content.scrollTop = content.scrollHeight; 
             });
         } catch(e) { 
-            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão.</div>'; 
+            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão ao carregar conversa.</div>'; 
         }
     },
 
     formatMonitorMsg(text, type, createdAt, fileUrl = null, fileName = null, fileType = null) {
-        const isAgent = type === 'agent'; 
+        const isAgent = type === 'agent' || type === 'system'; 
         const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : ''; 
         const mediaHtml = this.buildMediaHtml(fileUrl, fileName, fileType);
         
         return `
         <div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4">
-            <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div>
+            <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${type === 'system' ? 'Sistema Automático' : (isAgent ? 'Analista' : 'Cliente')} • ${timeStr}</div>
             <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
                 ${text}${mediaHtml}
             </div>
@@ -818,7 +845,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("O limite de atendimentos simultâneos foi alcançado!"); 
+                    alert("O limite máximo de atendimentos simultâneos foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -931,9 +958,9 @@ const App = {
             html += `<div class="flex items-center gap-4 my-6"><div class="h-px bg-slate-200 flex-1"></div><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Histórico da Thread</span><div class="h-px bg-slate-200 flex-1"></div></div>`;
             for (let i = 1; i < msgs.length; i++) {
                 const m = msgs[i]; 
-                const isAgent = m.sender_type === 'agent'; 
+                const isAgent = m.sender_type === 'agent' || m.sender_type === 'system'; 
                 const dateStr = new Date(m.created_at).toLocaleString('pt-BR'); 
-                const senderName = isAgent ? 'Nossa Equipe (Analista)' : (ticket.customers?.full_name || 'Cliente'); 
+                const senderName = m.sender_type === 'system' ? 'Sistema Automático' : (isAgent ? 'Nossa Equipe' : (ticket.customers?.full_name || 'Cliente')); 
                 const bgColor = isAgent ? 'bg-blue-50 border-blue-100' : 'bg-white border-slate-200';
                 
                 html += `
@@ -952,7 +979,7 @@ const App = {
     },
 
     renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {
-        const isAgent = type === 'agent'; 
+        const isAgent = type === 'agent' || type === 'system'; 
         const mediaHtml = this.buildMediaHtml(fileUrl, fileName, fileType);
         const area = document.getElementById('chat-history'); 
         if(!area) return;
@@ -972,7 +999,7 @@ const App = {
         const notes = document.getElementById('crm-notes').value.trim();
 
         if (!tag1 || !tag2 || !notes) {
-            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações.");
+            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações do Atendimento.");
             return;
         }
 
@@ -1036,7 +1063,7 @@ const App = {
             const hist = await agentAPI.getCustomerHistoryByEmail(email); 
             const container = document.getElementById('history-list');
             if(hist.length === 0) { 
-                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; 
+                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior encontrado.</div>'; 
                 return; 
             }
             
@@ -1061,7 +1088,6 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // AQUI ESTÁ O MODAL DE HISTÓRICO COM AS TAGS E NOTAS
     async viewPastChat(ticketId, protocolNumber) {
         try {
             const ticket = await agentAPI.getTicketDetails(ticketId); 
@@ -1128,7 +1154,7 @@ const App = {
             document.getElementById('order-form').classList.add('hidden-view'); 
             this.loadCustomerOrders(this.currentCustomer.id); 
         } catch (e) { 
-            alert("Erro ao tentar salvar o pedido."); 
+            alert("Erro ao tentar salvar o pedido no CRM."); 
         }
     },
 
@@ -1154,9 +1180,6 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // ==========================================
-    // DASHBOARD & RELATÓRIOS (Atualizado com Data e Tabela)
-    // ==========================================
     async renderDashboard() {
         try {
             const startDate = document.getElementById('dash-start').value;
@@ -1165,7 +1188,6 @@ const App = {
             const btnFiltro = event?.target?.closest('button');
             if (btnFiltro) btnFiltro.innerHTML = `<span class="material-symbols-outlined animate-spin text-[14px]">refresh</span> Buscando...`;
 
-            // Busca os dados filtrados por data
             this.dashboardTickets = await agentAPI.getDashboardTickets(startDate, endDate); 
             this.allProfiles = await agentAPI.getTeamProfiles();
             
@@ -1179,7 +1201,7 @@ const App = {
             
             const npsTickets = closedTickets.filter(t => t.rating !== null); 
             const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; 
-            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0); // Vendas poderia filtrar data também, mas mantive geral por enquanto.
+            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0);
             
             document.getElementById('stat-total').innerText = total; 
             document.getElementById('stat-open').innerText = open; 
@@ -1249,14 +1271,13 @@ const App = {
 
     filterDashboardByAgent(agentId, agentName) {
         if (this.dashFilterAgent === agentId || !agentId) {
-            this.dashFilterAgent = null; // Remove filtro se clicar no mesmo
+            this.dashFilterAgent = null; 
             document.getElementById('active-filter-badge').classList.add('hidden-view');
         } else {
             this.dashFilterAgent = agentId;
             document.getElementById('active-filter-badge').classList.remove('hidden-view');
             document.getElementById('active-filter-name').innerText = agentName;
         }
-        // Atualiza apenas a tabela e o ranking (visualmente)
         this.updateAnalystRanking(this.dashboardTickets.filter(t => t.status === 'closed'), this.allProfiles);
         this.renderClosedCasesTable(this.dashboardTickets, this.allProfiles);
     },
@@ -1278,7 +1299,6 @@ const App = {
         container.innerHTML = filteredTickets.map(t => {
             const agentName = profiles.find(p => p.id === t.agent_id)?.full_name || 'Sistema/Desconhecido';
             
-            // Cálculo de Tempo (Do created_at até o closed_at)
             const created = new Date(t.created_at);
             const closed = new Date(t.closed_at);
             const diffMs = closed - created;
@@ -1316,7 +1336,7 @@ const App = {
             return;
         }
         
-        const BOM = "\uFEFF"; // Garante UTF-8 no Excel
+        const BOM = "\uFEFF"; 
         let csvContent = BOM + "Protocolo;Canal;Data Criacao;Data Fechamento;Tempo Total (Minutos);Cliente;Email Cliente;Motivo Original;Tag 1 (Motivo);Tag 2 (Submotivo);Observacoes (Agente);Agente;Nota NPS\n";
         
         this.dashboardTickets.filter(t => t.status === 'closed').forEach(t => {
@@ -1325,7 +1345,6 @@ const App = {
             const closed = new Date(t.closed_at);
             const diffMins = Math.floor((closed - created) / 60000);
             
-            // Limpa as aspas e quebras de linha para não quebrar o CSV
             const safeNotes = t.agent_notes ? t.agent_notes.replace(/"/g, '""').replace(/\n/g, ' ') : '';
             
             const row = [
@@ -1347,7 +1366,6 @@ const App = {
             csvContent += row + "\n";
         });
 
-        // Dispara o download
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -1358,9 +1376,6 @@ const App = {
         document.body.removeChild(link);
     },
 
-    // ==========================================
-    // GESTÃO DE EQUIPE E CHAT INTERNO (GESTOR)
-    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 

@@ -38,20 +38,17 @@ export const agentAPI = {
 
     async getPendingTickets() {
         const { data, error } = await supabase.from('tickets')
-            .select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, customers (full_name, email), ticket_subjects (label)`)
+            .select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
             .in('status', ['open', 'in_progress'])
             .order('created_at', { ascending: true });
         if (error) throw error;
         return data;
     },
 
-    // FUNÇÃO NOVA PARA O DASHBOARD (Filtro por Data)
     async getDashboardTickets(startDate, endDate) {
-        let query = supabase.from('tickets').select(`id, protocol_number, channel, created_at, closed_at, status, agent_id, rating, agent_tag1, agent_tag2, agent_notes, customers(full_name), ticket_subjects(label)`);
-        
+        let query = supabase.from('tickets').select(`id, protocol_number, channel, created_at, closed_at, status, agent_id, rating, agent_tag1, agent_tag2, agent_notes, customers(full_name, email), ticket_subjects(label)`);
         if (startDate) query = query.gte('created_at', startDate + 'T00:00:00.000Z');
         if (endDate) query = query.lte('created_at', endDate + 'T23:59:59.999Z');
-        
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
         return data;
@@ -133,7 +130,23 @@ export const agentAPI = {
         if (fileData) { payload.file_url = fileData.url; payload.file_name = fileData.name; payload.file_type = fileData.type; }
         const { error: msgErr } = await supabase.from('messages').insert([payload]);
         if (msgErr) throw msgErr;
-        const { error: tkErr } = await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date() }).eq('id', ticketId);
+        
+        // Zera a flag de Alerta sempre que o Agente ou Cliente respondem ativamente
+        const { error: tkErr } = await supabase.from('tickets').update({ 
+            last_sender: 'agent', 
+            last_interaction_at: new Date(),
+            has_warning_sent: false
+        }).eq('id', ticketId);
+        if (tkErr) throw tkErr;
+    },
+
+    async sendWarningMacro(ticketId, content) {
+        // Envia a mensagem mas NÃO altera o last_interaction_at, para o cronômetro continuar
+        const payload = { ticket_id: ticketId, sender_type: 'agent', content: content };
+        const { error: msgErr } = await supabase.from('messages').insert([payload]);
+        if (msgErr) throw msgErr;
+        
+        const { error: tkErr } = await supabase.from('tickets').update({ has_warning_sent: true }).eq('id', ticketId);
         if (tkErr) throw tkErr;
     },
 
