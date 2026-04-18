@@ -128,7 +128,7 @@
                                     <option value="">Todos os Grupos</option>
                                 </select>
                                 
-                                <button onclick="agentApp.renderDashboard()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1">
+                                <button id="btn-filter-dash" onclick="agentApp.renderDashboard()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1">
                                     <span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar
                                 </button>
                             </div>
@@ -209,38 +209,48 @@
                 </section>
 
                 <section id="sec-settings" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-4xl mx-auto space-y-8">
+                    <div class="max-w-5xl mx-auto space-y-8">
                         <h2 class="text-3xl font-black text-slate-900">Configurações Gerais</h2>
-                        <div class="bg-white p-8 rounded-3xl border shadow-sm space-y-6">
+                        <div class="bg-white p-8 rounded-3xl border shadow-sm space-y-8">
                             
-                            <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">timer</span> SLA: Alertas e Encerramento</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5">
-                                    <h4 class="font-black text-slate-700 uppercase tracking-widest text-[10px] mb-4 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">forum</span> Canal Chat</h4>
-                                    <div class="grid grid-cols-2 gap-4 mb-4">
-                                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Alerta (Minutos)</label><input type="number" id="cfg-chat-warn-time" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
-                                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Fechar (Minutos)</label><input type="number" id="cfg-chat-time" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                            <div>
+                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2 mb-6"><span class="material-symbols-outlined text-blue-600">timer</span> SLA: Alertas e Encerramento Automático</h3>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm">
+                                        <h4 class="font-black text-slate-700 uppercase tracking-widest text-[10px] mb-4 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">forum</span> Canal Web (Chat)</h4>
+                                        <div class="grid grid-cols-2 gap-4 mb-4">
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Alerta (Minutos)</label><input type="number" id="cfg-chat-warn-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Encerramento</label><input type="number" id="cfg-chat-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                        </div>
+                                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Mensagem de Alerta (Chat)</label>
+                                        <textarea id="cfg-macro-warn-chat" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm resize-y h-24" placeholder="Ex: Olá, ainda está aí?..."></textarea>
                                     </div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">Macro de Alerta (Ainda está aí?)</label>
-                                    <textarea id="cfg-macro-warn-chat" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-xs resize-none h-20"></textarea>
+
+                                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm">
+                                        <h4 class="font-black text-slate-700 uppercase tracking-widest text-[10px] mb-4 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">mail</span> Canal E-mail</h4>
+                                        <div class="grid grid-cols-2 gap-4 mb-4">
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Alerta (Horas)</label><input type="number" id="cfg-email-warn-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Tempo Encerramento</label><input type="number" id="cfg-email-time" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                        </div>
+                                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Mensagem de Alerta (E-mail)</label>
+                                        <textarea id="cfg-macro-warn-email" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm resize-y h-24" placeholder="Ex: Oi, tudo bem? Estamos retornando..."></textarea>
+                                    </div>
                                 </div>
-                                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5">
-                                    <h4 class="font-black text-slate-700 uppercase tracking-widest text-[10px] mb-4 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">mail</span> Canal E-mail</h4>
-                                    <div class="grid grid-cols-2 gap-4 mb-4">
-                                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Alerta (Horas)</label><input type="number" id="cfg-email-warn-time" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
-                                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">Fechar (Horas)</label><input type="number" id="cfg-email-time" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm" min="1"></div>
+                                
+                                <div class="mt-6">
+                                    <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem Final de Encerramento (Geral)</label>
+                                    <div class="flex gap-2 mb-3">
+                                        <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
+                                        <button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
                                     </div>
-                                    <label class="block text-[10px] font-bold text-slate-500 mb-1">Macro de Alerta (Lembrete)</label>
-                                    <textarea id="cfg-macro-warn-email" class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-xs resize-none h-20"></textarea>
+                                    <textarea id="cfg-macro" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium resize-y h-24 leading-relaxed"></textarea>
                                 </div>
                             </div>
                             
-                            <div class="mt-4">
-                                <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem Final de Encerramento (Ambos os Canais)</label>
-                                <div class="flex gap-2 mb-2"><button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">+ Nome</button><button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">+ Protocolo</button></div>
-                                <textarea id="cfg-macro" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium resize-y h-24 text-sm"></textarea>
-                            </div>
-                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8"><span class="material-symbols-outlined">save</span> Salvar SLAs e Macros</button>
+                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8">
+                                <span class="material-symbols-outlined">save</span> Salvar Configurações Gerais
+                            </button>
                             
                             <div class="border-t pt-8 mt-8">
                                 <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)</h3>
@@ -324,6 +334,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="module" src="js/agent/app.js"></script>
 </body>
 </html>
