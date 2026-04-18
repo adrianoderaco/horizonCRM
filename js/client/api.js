@@ -1,3 +1,4 @@
+// Arquivo: js/client/api.js
 import { supabase } from '../supabase.js';
 
 export const clientAPI = {

@@ -2,17 +2,15 @@
 import { clientAPI } from './api.js';
 
 const App = {
-    selectedSubject: null,
     ticketId: null,
 
     async init() {
         window.clientApp = this;
         console.log("🚀 Iniciando App do Cliente...");
 
-        // 1. Carrega os assuntos com proteção
+        // Carrega as opções no dropdown
         await this.loadSubjects();
 
-        // 2. Atrela os eventos com proteção (só atrela se o elemento existir na tela)
         const registerForm = document.getElementById('register-form');
         if (registerForm) {
             registerForm.addEventListener('submit', async (e) => {
@@ -24,19 +22,31 @@ const App = {
                 const name = document.getElementById('cust-name').value;
                 const email = document.getElementById('cust-email').value;
                 const phone = document.getElementById('cust-phone').value;
+                const subjectId = document.getElementById('cust-subject').value;
+                const initialMessage = document.getElementById('cust-message').value;
 
                 try {
                     let customer = await clientAPI.checkCustomer(email);
                     if (!customer) {
                         customer = await clientAPI.createCustomer({ full_name: name, email: email, phone: phone });
                     }
-                    const ticket = await clientAPI.createTicket(customer.id, this.selectedSubject);
+                    
+                    // 1. Cria o Ticket
+                    const ticket = await clientAPI.createTicket(customer.id, subjectId);
                     this.ticketId = ticket.id;
                     
+                    // 2. Muda para a tela de Chat
                     this.navigate('chat');
                     document.getElementById('header-desc').innerText = `Protocolo HZ-${ticket.protocol_number}`;
+                    
+                    // 3. Imprime as boas-vindas do sistema
                     this.renderMsg("Olá! Recebemos seu chamado e um analista logo irá te atender.", 'system');
 
+                    // 4. Envia a mensagem inicial do cliente imediatamente para o banco e pinta na tela
+                    await clientAPI.sendMessage(this.ticketId, initialMessage);
+                    this.renderMsg(initialMessage, 'customer');
+
+                    // 5. Escuta atualizações de status do Ticket (Liberar upload ou Fechar/NPS)
                     clientAPI.subscribeToTicket(this.ticketId, (t) => {
                         if (t.status === 'closed') {
                             this.navigate('nps');
@@ -49,13 +59,14 @@ const App = {
                         }
                     });
 
+                    // 6. Escuta as respostas do Agente
                     clientAPI.subscribeToMessages(this.ticketId, (msg, fUrl, fName, fType) => {
                         this.renderMsg(msg, 'agent', fUrl, fName, fType);
                     });
 
                 } catch (err) {
                     console.error("❌ Erro ao registrar/criar ticket:", err);
-                    alert("Erro ao iniciar chat. Verifique sua conexão e tente novamente.");
+                    alert("Erro ao iniciar atendimento. Verifique sua conexão e tente novamente.");
                     btn.innerHTML = originalText;
                 }
             });
@@ -68,13 +79,13 @@ const App = {
                 const input = document.getElementById('chat-input');
                 const text = input.value.trim();
                 if(!text || !this.ticketId) return;
+                
                 this.renderMsg(text, 'customer');
                 input.value = '';
+                
                 try {
                     await clientAPI.sendMessage(this.ticketId, text);
-                } catch(e) {
-                    console.error("❌ Erro ao enviar msg:", e);
-                }
+                } catch(e) { console.error("❌ Erro ao enviar msg:", e); }
             });
         }
 
@@ -93,7 +104,7 @@ const App = {
                     this.renderMsg("📎 Anexo enviado:", 'customer', fileData.url, fileData.name, fileData.type);
                 } catch(err) {
                     console.error("❌ Erro no upload:", err);
-                    alert("Erro ao enviar o arquivo. Tente um arquivo menor.");
+                    alert("Erro ao enviar o arquivo. O arquivo pode ser muito grande.");
                 } finally {
                     document.getElementById('upload-progress').classList.add('hidden-view');
                     document.getElementById('btn-send').disabled = false;
@@ -104,7 +115,7 @@ const App = {
     },
 
     navigate(target) {
-        ['subjects', 'register', 'chat', 'nps'].forEach(s => {
+        ['register', 'chat', 'nps'].forEach(s => {
             const el = document.getElementById(`sec-${s}`);
             if (el) el.classList.add('hidden-view');
         });
@@ -113,31 +124,21 @@ const App = {
     },
 
     async loadSubjects() {
-        const container = document.getElementById('subject-list');
-        if (!container) return;
-        
-        container.innerHTML = `<div class="text-center text-slate-500 font-bold animate-pulse py-4">Buscando assuntos disponíveis...</div>`;
+        const selectEl = document.getElementById('cust-subject');
+        if (!selectEl) return;
         
         try {
             const subjects = await clientAPI.getActiveSubjects();
             if (!subjects || subjects.length === 0) {
-                container.innerHTML = `<div class="text-center text-slate-500 font-bold py-4">Nenhum assunto disponível no momento.</div>`;
+                selectEl.innerHTML = `<option value="" disabled selected>Nenhum assunto disponível</option>`;
                 return;
             }
-            container.innerHTML = subjects.map(s => `
-                <button onclick="clientApp.selectSubject('${s.id}')" class="w-full text-left p-4 bg-white border border-slate-200 rounded-2xl hover:border-blue-600 hover:shadow-md transition-all font-bold text-slate-700 flex justify-between items-center group">
-                    ${s.label} <span class="material-symbols-outlined text-slate-300 group-hover:text-blue-600">chevron_right</span>
-                </button>
-            `).join('');
+            selectEl.innerHTML = `<option value="" disabled selected>Selecione um Assunto...</option>` + 
+                subjects.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
         } catch (e) {
-            console.error("❌ Erro ao buscar assuntos (RLS ou Banco Off):", e);
-            container.innerHTML = `<div class="text-center text-red-500 font-bold py-4">Erro ao comunicar com o servidor.</div>`;
+            console.error("❌ Erro ao buscar assuntos:", e);
+            selectEl.innerHTML = `<option value="" disabled selected>Erro ao carregar assuntos</option>`;
         }
-    },
-
-    selectSubject(id) {
-        this.selectedSubject = id;
-        this.navigate('register');
     },
 
     renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {

@@ -11,33 +11,44 @@
         body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; }
         .hidden-view { display: none !important; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="antialiased text-slate-800 flex items-center justify-center min-h-screen p-4">
 
     <main class="w-full max-w-lg bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 flex flex-col h-[85vh]">
         
-        <header class="bg-blue-600 p-6 text-white shrink-0 text-center relative">
+        <header class="bg-blue-600 p-6 text-white shrink-0 text-center relative z-10 shadow-sm">
             <h1 class="text-2xl font-black flex items-center justify-center gap-2"><span class="material-symbols-outlined">cloud</span> Horizon CRM</h1>
-            <p class="text-blue-200 text-sm font-medium mt-1" id="header-desc">Central de Atendimento</p>
+            <p class="text-blue-200 text-sm font-medium mt-1" id="header-desc">Central de Relacionamento</p>
         </header>
 
         <div class="flex-1 overflow-y-auto p-6 flex flex-col" id="app-content">
             
-            <section id="sec-subjects" class="space-y-4">
-                <h2 class="text-xl font-black text-slate-900 mb-6 text-center">Como podemos ajudar hoje?</h2>
-                <div id="subject-list" class="flex flex-col gap-3"></div>
-            </section>
-
-            <section id="sec-register" class="hidden-view space-y-6">
-                <h2 class="text-xl font-black text-slate-900 text-center">Quase lá!</h2>
-                <p class="text-slate-500 text-sm text-center">Informe seus dados para iniciar o atendimento.</p>
+            <section id="sec-register" class="space-y-6">
+                <div class="text-center">
+                    <h2 class="text-2xl font-black text-slate-900">Como podemos ajudar?</h2>
+                    <p class="text-slate-500 text-sm mt-2">Preencha os dados abaixo para falar com nossa equipe.</p>
+                </div>
+                
                 <form id="register-form" class="space-y-4">
-                    <input type="text" id="cust-name" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Nome Completo" required>
-                    <input type="email" id="cust-email" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="E-mail" required>
-                    <input type="tel" id="cust-phone" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Celular (WhatsApp)" required>
-                    <button type="submit" class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg transition-all flex justify-center items-center gap-2">Iniciar Chat <span class="material-symbols-outlined">arrow_forward</span></button>
-                    <button type="button" onclick="clientApp.navigate('subjects')" class="w-full py-2 text-slate-500 font-bold text-sm">Voltar</button>
+                    <input type="text" id="cust-name" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Seu Nome Completo" required>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <input type="email" id="cust-email" class="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="E-mail" required>
+                        <input type="tel" id="cust-phone" class="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Celular / WhatsApp" required>
+                    </div>
+
+                    <select id="cust-subject" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm text-slate-700 cursor-pointer" required>
+                        <option value="" disabled selected>Carregando assuntos...</option>
+                    </select>
+
+                    <textarea id="cust-message" rows="3" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm resize-none" placeholder="Descreva brevemente o que está acontecendo..." required></textarea>
+                    
+                    <button type="submit" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 mt-2">
+                        Iniciar Atendimento <span class="material-symbols-outlined">arrow_forward</span>
+                    </button>
                 </form>
             </section>
 
@@ -49,7 +60,7 @@
                     <button type="button" id="btn-attach" onclick="document.getElementById('file-input').click()" class="hidden-view bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 flex items-center justify-center transition-colors shadow-sm" title="Anexar Arquivo">
                         <span class="material-symbols-outlined">attach_file</span>
                     </button>
-                    <input type="text" id="chat-input" class="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 outline-none font-medium focus:ring-2 focus:ring-blue-600" placeholder="Mensagem..." autocomplete="off" required>
+                    <input type="text" id="chat-input" class="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 outline-none font-medium focus:ring-2 focus:ring-blue-600" placeholder="Digite sua mensagem..." autocomplete="off" required>
                     <button type="submit" id="btn-send" class="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl font-bold transition-all shadow-md flex items-center justify-center"><span class="material-symbols-outlined">send</span></button>
                 </form>
                 <div id="upload-progress" class="hidden-view text-[10px] text-blue-600 font-bold mt-2 animate-pulse text-center">Enviando anexo, aguarde...</div>
