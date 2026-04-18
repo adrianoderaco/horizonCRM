@@ -7,6 +7,7 @@ import { Sidebar } from './sidebar.js';
 const App = {
     activeTicketId: null,
     messageSub: null,
+    monitorSub: null, // Novo: Guarda a assinatura do modal de monitoria
     isRegisterMode: false,
     currentUser: null,
     currentCustomer: null,
@@ -17,7 +18,7 @@ const App = {
 
     init() {
         window.agentApp = this; 
-        this.startLiveTimers();
+        this.startLiveTimers(); 
 
         window.addEventListener('ticket-assigned', (e) => this.pickTicket(e.detail.id));
 
@@ -33,7 +34,7 @@ const App = {
             if (this.isRegisterMode) {
                 try {
                     await agentAPI.register(document.getElementById('reg-name').value, email, pass);
-                    alert("Aguarde aprovação do gestor.");
+                    alert("Aguarde aprovação.");
                     this.toggleAuthMode();
                 } catch (err) { alert("Erro: " + err.message); } 
                 finally { btn.innerHTML = originalText; }
@@ -75,10 +76,7 @@ const App = {
                     }
                 });
 
-            } catch (error) { 
-                alert("Erro no login."); 
-                btn.innerHTML = originalText; 
-            }
+            } catch (error) { alert("Erro no login."); btn.innerHTML = originalText; }
         });
 
         document.getElementById('agent-chat-form').addEventListener('submit', async (e) => {
@@ -134,7 +132,6 @@ const App = {
     renderBubbles() {
         const container = document.getElementById('bubble-container');
         if(!container) return;
-        
         const myTickets = this.activeTickets.filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id);
         
         container.innerHTML = myTickets.map(t => `
@@ -207,14 +204,18 @@ const App = {
             }
 
             let actionBtn = `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">${inProg && isMine ? 'Retomar Chat' : 'Atender'}</button>`;
-            if (inProg && !isMine && isGestor) actionBtn = `<button disabled class="bg-slate-100 text-slate-400 border px-5 py-2.5 rounded-xl text-xs font-black cursor-not-allowed">Em Curso</button>`;
+            
+            // NOVO: Se o Gestor está olhando a fila de outra pessoa, libera o botão de Monitorar
+            if (inProg && !isMine && isGestor) {
+                actionBtn = `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>`;
+            }
 
             return `
             <tr class="hover:bg-slate-50 transition-colors">
                 <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} <span class="text-[10px] bg-slate-200 px-2 py-0.5 rounded ml-2">${t.channel}</span></td>
                 <td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td>
                 <td class="p-5">${statusHtml}</td>
-                <td class="p-5 text-right">${actionBtn}</td>
+                <td class="p-5 text-right w-32">${actionBtn}</td>
             </tr>`;
         }).join('');
     },
@@ -225,6 +226,47 @@ const App = {
         } else { this.loadQueue(); }
     },
 
+    // --- MONITORIA AO VIVO (GESTOR) ---
+    async monitorTicket(ticketId, protocolNumber) {
+        const modal = document.getElementById('modal-monitor');
+        const content = document.getElementById('monitor-chat-content');
+        document.getElementById('modal-monitor-protocol').innerText = `Protocolo HZ-${protocolNumber}`;
+        
+        modal.classList.remove('hidden-view');
+        content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando conversa...</div>';
+
+        try {
+            // Carrega o histórico até agora
+            const msgs = await agentAPI.getMessages(ticketId);
+            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type)).join('');
+            content.scrollTop = content.scrollHeight;
+
+            // Fica escutando as novas mensagens em tempo real
+            if (this.monitorSub) this.monitorSub.unsubscribe();
+            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType) => {
+                content.innerHTML += this.formatMonitorMsg(msgText, senderType);
+                content.scrollTop = content.scrollHeight;
+            });
+        } catch(e) { content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro ao carregar monitoria.</div>'; }
+    },
+
+    formatMonitorMsg(text, type) {
+        const isAgent = type === 'agent';
+        return `
+            <div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full">
+                <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}</div>
+            </div>`;
+    },
+
+    closeMonitor() {
+        document.getElementById('modal-monitor').classList.add('hidden-view');
+        if (this.monitorSub) {
+            this.monitorSub.unsubscribe();
+            this.monitorSub = null;
+        }
+    },
+
+    // --- ATENDIMENTO E CHAT ---
     async pickTicket(id) {
         this.activeTicketId = id;
         this.navigate('chat');
@@ -235,9 +277,7 @@ const App = {
 
         let t = await agentAPI.getTicketDetails(id);
         
-        // CORREÇÃO: Se o ticket foi clicado manualmente e está aberto, assume a propriedade!
         if (t.status === 'open' || !t.agent_id) {
-            // Conta os tickets atuais para travar a captura manual
             const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
             if (myCount >= 10) {
                 alert("Você atingiu o limite de 10 atendimentos simultâneos!");

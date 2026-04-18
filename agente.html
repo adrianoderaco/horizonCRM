@@ -161,6 +161,19 @@
         </div>
     </div>
 
+    <div id="modal-monitor" class="hidden-view fixed inset-0 bg-slate-900/80 z-[110] flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-2xl rounded-3xl flex flex-col max-h-[80vh] shadow-2xl">
+            <header class="p-6 border-b flex justify-between items-center bg-blue-50 rounded-t-3xl">
+                <div class="flex items-center gap-4">
+                    <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span></span>
+                    <div><h3 class="font-black text-blue-900">Monitoria Silenciosa</h3><div class="text-xs font-bold text-blue-600 mt-1" id="modal-monitor-protocol"></div></div>
+                </div>
+                <button onclick="agentApp.closeMonitor()" class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center hover:bg-blue-200 transition-colors"><span class="material-symbols-outlined text-blue-700">close</span></button>
+            </header>
+            <div id="monitor-chat-content" class="flex-1 overflow-y-auto p-6 space-y-4 bg-white"></div>
+        </div>
+    </div>
+
     <script type="module" src="js/agent/app.js"></script>
 </body>
 </html>
