@@ -7,7 +7,7 @@ import { Sidebar } from './sidebar.js';
 const App = {
     activeTicketId: null,
     messageSub: null,
-    monitorSub: null, // Novo: Guarda a assinatura do modal de monitoria
+    monitorSub: null,
     isRegisterMode: false,
     currentUser: null,
     currentCustomer: null,
@@ -20,7 +20,10 @@ const App = {
         window.agentApp = this; 
         this.startLiveTimers(); 
 
-        window.addEventListener('ticket-assigned', (e) => this.pickTicket(e.detail.id));
+        window.addEventListener('ticket-assigned', async (e) => {
+            await this.loadQueue(); // Força recarregar a fila pra gerar a bolha
+            this.pickTicket(e.detail.id);
+        });
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -57,18 +60,21 @@ const App = {
                 document.getElementById('view-app').classList.remove('hidden-view');
                 
                 this.allSubjects = await agentAPI.getAllSubjects();
-                this.activeAgents = await agentAPI.getActiveAgents();
+                this.activeAgents = await agentAPI.getActiveAgents(); // Puxa só os online agora
                 
                 Sidebar.render('sidebar-root', profile.role);
                 
                 if (profile.role === 'gestor') {
                     document.getElementById('wrapper-routing').classList.remove('hidden-view');
+                    // Força a primeira renderização silenciosa do dashboard
+                    this.renderDashboard(); 
                 }
                 
                 document.getElementById('toggle-routing').checked = profile.is_routing_active;
                 Orchestrator.init(profile.id, profile.is_routing_active);
 
-                this.loadQueue();
+                await this.loadQueue();
+
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
@@ -91,9 +97,11 @@ const App = {
     },
 
     async logout() {
-        if(confirm("Deseja sair? Seus atendimentos em andamento voltarão automaticamente para a fila!")) {
+        if(confirm("Deseja sair? Seus atendimentos em andamento voltarão para a fila!")) {
             try {
+                // Libera tickets e marca o usuário como Offline
                 await agentAPI.releaseMyTickets(this.currentUser.id);
+                await agentAPI.setOffline(this.currentUser.id);
                 await supabase.auth.signOut();
                 location.reload();
             } catch(e) { alert("Erro ao deslogar."); }
@@ -132,6 +140,8 @@ const App = {
     renderBubbles() {
         const container = document.getElementById('bubble-container');
         if(!container) return;
+        
+        // CORREÇÃO: Garante que os tickets ativos injetados estão atualizados
         const myTickets = this.activeTickets.filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id);
         
         container.innerHTML = myTickets.map(t => `
@@ -195,17 +205,17 @@ const App = {
 
             let agentDisplay = `<span class="text-[11px] font-bold text-slate-500 block mt-1">Analista: ${agentName}</span>`;
             if (isGestor) {
+                // Dropdown mostra "Devolver" + Somente agentes logados (alimentado pelo activeAgents filtrado)
                 agentDisplay = `
                     <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px]">
                         <option value="">Devolver para Fila</option>
-                        ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name}</option>`).join('')}
+                        ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name} (Online)</option>`).join('')}
                     </select>
                 `;
             }
 
             let actionBtn = `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">${inProg && isMine ? 'Retomar Chat' : 'Atender'}</button>`;
             
-            // NOVO: Se o Gestor está olhando a fila de outra pessoa, libera o botão de Monitorar
             if (inProg && !isMine && isGestor) {
                 actionBtn = `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>`;
             }
@@ -226,7 +236,7 @@ const App = {
         } else { this.loadQueue(); }
     },
 
-    // --- MONITORIA AO VIVO (GESTOR) ---
+    // --- MONITORIA AO VIVO COM DATA/HORA ---
     async monitorTicket(ticketId, protocolNumber) {
         const modal = document.getElementById('modal-monitor');
         const content = document.getElementById('monitor-chat-content');
@@ -236,24 +246,28 @@ const App = {
         content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando conversa...</div>';
 
         try {
-            // Carrega o histórico até agora
             const msgs = await agentAPI.getMessages(ticketId);
-            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type)).join('');
+            // Passa o created_at para a formatação
+            content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at)).join('');
             content.scrollTop = content.scrollHeight;
 
-            // Fica escutando as novas mensagens em tempo real
             if (this.monitorSub) this.monitorSub.unsubscribe();
-            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType) => {
-                content.innerHTML += this.formatMonitorMsg(msgText, senderType);
+            // Escuta mensagens novas e injeta data/hora
+            this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt) => {
+                content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt);
                 content.scrollTop = content.scrollHeight;
             });
         } catch(e) { content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro ao carregar monitoria.</div>'; }
     },
 
-    formatMonitorMsg(text, type) {
+    formatMonitorMsg(text, type, createdAt) {
         const isAgent = type === 'agent';
+        // Formata Data e Hora (ex: 18/04/2026 14:30)
+        const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        
         return `
-            <div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full">
+            <div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4">
+                <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div>
                 <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}</div>
             </div>`;
     },
@@ -266,29 +280,30 @@ const App = {
         }
     },
 
-    // --- ATENDIMENTO E CHAT ---
+    // --- ATENDIMENTO ---
     async pickTicket(id) {
         this.activeTicketId = id;
         this.navigate('chat');
         document.getElementById('menu-chat').classList.remove('hidden-view');
         document.getElementById('chat-history').innerHTML = '';
         this.switchTab('crm-info');
-        this.renderBubbles();
-
+        
         let t = await agentAPI.getTicketDetails(id);
         
         if (t.status === 'open' || !t.agent_id) {
             const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
             if (myCount >= 10) {
-                alert("Você atingiu o limite de 10 atendimentos simultâneos!");
+                alert("Limite de 10 atendimentos simultâneos alcançado!");
                 this.navigate('queue');
                 return;
             }
             await agentAPI.reassignTicket(id, this.currentUser.id);
             t.status = 'in_progress';
             t.agent_id = this.currentUser.id;
+            await this.loadQueue(); // CORREÇÃO: Atualiza fila para gerar a bolha instantaneamente
         }
 
+        this.renderBubbles(); // Atualiza foco da bolha selecionada
         this.currentCustomer = t.customers; 
         
         document.getElementById('chat-header-name').innerText = t.customers.full_name;
@@ -298,8 +313,12 @@ const App = {
         document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto';
         document.getElementById('crm-tag2').value = t.tag2_detail || '';
 
+        // Recarrega dropdown de transferência (com agentes online)
+        this.activeAgents = await agentAPI.getActiveAgents();
         this.populateTransferDropdowns();
-        this.loadCustomerHistory(t.customer_id);
+        
+        // CORREÇÃO HISTÓRICO: Usa o e-mail para vincular o cliente corretamente
+        this.loadCustomerHistory(t.customers.email);
         this.loadCustomerOrders(t.customer_id);
 
         const msgs = await agentAPI.getMessages(id);
@@ -320,7 +339,7 @@ const App = {
     },
 
     async closeTicket() {
-        if (!confirm("Encerrar este atendimento?")) return;
+        if (!confirm("Encerrar atendimento?")) return;
         try {
             await agentAPI.closeTicket(this.activeTicketId, document.getElementById('crm-tag2').value);
             this.activeTicketId = null;
@@ -346,7 +365,7 @@ const App = {
 
         const agSelect = document.getElementById('transfer-agent');
         agSelect.innerHTML = '<option value="">➜ Para Agente...</option>';
-        this.activeAgents.forEach(a => { if (a.id !== this.currentUser.id) agSelect.innerHTML += `<option value="${a.id}">${a.full_name}</option>`; });
+        this.activeAgents.forEach(a => { if (a.id !== this.currentUser.id) agSelect.innerHTML += `<option value="${a.id}">${a.full_name} (Online)</option>`; });
     },
 
     async transferTicket() {
@@ -364,9 +383,10 @@ const App = {
         }
     },
 
-    async loadCustomerHistory(customerId) {
+    async loadCustomerHistory(email) {
         try {
-            const hist = await agentAPI.getCustomerHistory(customerId);
+            // Usa o novo método baseado em e-mail
+            const hist = await agentAPI.getCustomerHistoryByEmail(email);
             const container = document.getElementById('history-list');
             if(hist.length === 0) { container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; return; }
             

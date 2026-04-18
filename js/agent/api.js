@@ -5,7 +5,16 @@ export const agentAPI = {
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        
+        // NOVO: Marca o usuário como ONLINE no banco
+        await supabase.from('profiles').update({ is_online: true }).eq('id', data.user.id);
+        
         return data;
+    },
+
+    async setOffline(userId) {
+        // NOVO: Marca como OFFLINE ao deslogar
+        await supabase.from('profiles').update({ is_online: false }).eq('id', userId);
     },
 
     async register(name, email, password) {
@@ -54,7 +63,8 @@ export const agentAPI = {
     },
 
     async getActiveAgents() {
-        const { data, error } = await supabase.from('profiles').select('id, full_name').eq('is_approved', true).order('full_name');
+        // NOVO: Só puxa os analistas que estão APROVADOS e ONLINE
+        const { data, error } = await supabase.from('profiles').select('id, full_name').eq('is_approved', true).eq('is_online', true).order('full_name');
         if (error) throw error;
         return data;
     },
@@ -71,8 +81,12 @@ export const agentAPI = {
         await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date() }).eq('id', ticketId);
     },
 
-    async getCustomerHistory(customerId) {
-        const { data, error } = await supabase.from('tickets').select(`*, ticket_subjects(label)`).eq('customer_id', customerId).order('created_at', { ascending: false });
+    // NOVO: Busca do Histórico baseada estritamente no E-MAIL do cliente
+    async getCustomerHistoryByEmail(email) {
+        const { data, error } = await supabase.from('tickets')
+            .select(`*, customers!inner(email), ticket_subjects(label)`)
+            .eq('customers.email', email)
+            .order('created_at', { ascending: false });
         if (error) throw error;
         return data;
     },
@@ -131,11 +145,11 @@ export const agentAPI = {
             }).subscribe();
     },
 
-    // NOVA FUNÇÃO: O Gestor escuta tanto o agente quanto o cliente para monitoria
     subscribeToAllMessages(ticketId, onNewMessage) {
         return supabase.channel(`monitor-${ticketId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
-                onNewMessage(payload.new.content, payload.new.sender_type);
+                // Passa também a data/hora exata (created_at) para a tela
+                onNewMessage(payload.new.content, payload.new.sender_type, payload.new.created_at);
             }).subscribe();
     }
 };
