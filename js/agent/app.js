@@ -87,7 +87,6 @@ const App = {
             }
         });
 
-        // ENVIO DE MENSAGENS COM ATUALIZAÇÃO IMEDIATA DA BOLHA
         document.getElementById('agent-chat-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('chat-input');
@@ -100,7 +99,6 @@ const App = {
             try {
                 await agentAPI.sendMessage(this.activeTicketId, text);
                 
-                // Força a atualização local da bolha para ela ir pra direita e mudar de cor na mesma hora
                 const tkIndex = this.activeTickets.findIndex(t => t.id === this.activeTicketId);
                 if (tkIndex > -1) {
                     this.activeTickets[tkIndex].last_sender = 'agent';
@@ -158,7 +156,6 @@ const App = {
         const container = document.getElementById('bubble-container');
         if(!container) return;
         
-        // ORDENAÇÃO: Mais antigas na esquerda, interações recentes migram para a direita
         const myTickets = this.activeTickets
             .filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id)
             .sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
@@ -169,7 +166,7 @@ const App = {
                  data-sender="${t.last_sender || 'customer'}" 
                  data-time="${t.last_interaction_at || t.created_at}"
                  title="HZ-${t.protocol_number}">
-                 ${t.protocol_number.slice(-3)}
+                 ${String(t.protocol_number).slice(-3)} 
             </div>
         `).join('');
     },
@@ -293,7 +290,6 @@ const App = {
         }
     },
 
-    // ABERTURA DE TICKET COM PROTEÇÃO DE ERROS
     async pickTicket(id) {
         try {
             this.activeTicketId = id;
@@ -314,7 +310,7 @@ const App = {
                 await agentAPI.reassignTicket(id, this.currentUser.id);
                 t.status = 'in_progress';
                 t.agent_id = this.currentUser.id;
-                await this.loadQueue(); // Garante que a fila saiba que é seu e mostre a bolha
+                await this.loadQueue(); 
             }
 
             this.renderBubbles(); 
