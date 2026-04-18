@@ -21,7 +21,7 @@ const App = {
         this.startLiveTimers(); 
 
         window.addEventListener('ticket-assigned', async (e) => {
-            await this.loadQueue(); // Força recarregar a fila pra gerar a bolha
+            await this.loadQueue(); 
             this.pickTicket(e.detail.id);
         });
 
@@ -60,13 +60,12 @@ const App = {
                 document.getElementById('view-app').classList.remove('hidden-view');
                 
                 this.allSubjects = await agentAPI.getAllSubjects();
-                this.activeAgents = await agentAPI.getActiveAgents(); // Puxa só os online agora
+                this.activeAgents = await agentAPI.getActiveAgents();
                 
                 Sidebar.render('sidebar-root', profile.role);
                 
                 if (profile.role === 'gestor') {
                     document.getElementById('wrapper-routing').classList.remove('hidden-view');
-                    // Força a primeira renderização silenciosa do dashboard
                     this.renderDashboard(); 
                 }
                 
@@ -83,27 +82,41 @@ const App = {
                 });
 
             } catch (error) { 
-                alert("Erro detalhado: " + error.message); 
-                console.error(error); 
+                alert("Erro detalhado no login: " + error.message); 
                 btn.innerHTML = originalText; 
             }
         });
 
+        // ENVIO DE MENSAGENS COM ATUALIZAÇÃO IMEDIATA DA BOLHA
         document.getElementById('agent-chat-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
+            
             this.renderMsg(text, 'agent');
             input.value = '';
-            await agentAPI.sendMessage(this.activeTicketId, text);
+            
+            try {
+                await agentAPI.sendMessage(this.activeTicketId, text);
+                
+                // Força a atualização local da bolha para ela ir pra direita e mudar de cor na mesma hora
+                const tkIndex = this.activeTickets.findIndex(t => t.id === this.activeTicketId);
+                if (tkIndex > -1) {
+                    this.activeTickets[tkIndex].last_sender = 'agent';
+                    this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString();
+                    this.renderBubbles(); 
+                }
+            } catch(e) {
+                console.error(e);
+                alert("Erro ao enviar mensagem.");
+            }
         });
     },
 
     async logout() {
         if(confirm("Deseja sair? Seus atendimentos em andamento voltarão para a fila!")) {
             try {
-                // Libera tickets e marca o usuário como Offline
                 await agentAPI.releaseMyTickets(this.currentUser.id);
                 await agentAPI.setOffline(this.currentUser.id);
                 await supabase.auth.signOut();
@@ -145,8 +158,10 @@ const App = {
         const container = document.getElementById('bubble-container');
         if(!container) return;
         
-        // CORREÇÃO: Garante que os tickets ativos injetados estão atualizados
-        const myTickets = this.activeTickets.filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id);
+        // ORDENAÇÃO: Mais antigas na esquerda, interações recentes migram para a direita
+        const myTickets = this.activeTickets
+            .filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id)
+            .sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
         
         container.innerHTML = myTickets.map(t => `
             <div onclick="agentApp.pickTicket('${t.id}')" 
@@ -209,7 +224,6 @@ const App = {
 
             let agentDisplay = `<span class="text-[11px] font-bold text-slate-500 block mt-1">Analista: ${agentName}</span>`;
             if (isGestor) {
-                // Dropdown mostra "Devolver" + Somente agentes logados (alimentado pelo activeAgents filtrado)
                 agentDisplay = `
                     <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px]">
                         <option value="">Devolver para Fila</option>
@@ -240,7 +254,6 @@ const App = {
         } else { this.loadQueue(); }
     },
 
-    // --- MONITORIA AO VIVO COM DATA/HORA ---
     async monitorTicket(ticketId, protocolNumber) {
         const modal = document.getElementById('modal-monitor');
         const content = document.getElementById('monitor-chat-content');
@@ -251,12 +264,10 @@ const App = {
 
         try {
             const msgs = await agentAPI.getMessages(ticketId);
-            // Passa o created_at para a formatação
             content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at)).join('');
             content.scrollTop = content.scrollHeight;
 
             if (this.monitorSub) this.monitorSub.unsubscribe();
-            // Escuta mensagens novas e injeta data/hora
             this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt) => {
                 content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt);
                 content.scrollTop = content.scrollHeight;
@@ -266,9 +277,7 @@ const App = {
 
     formatMonitorMsg(text, type, createdAt) {
         const isAgent = type === 'agent';
-        // Formata Data e Hora (ex: 18/04/2026 14:30)
         const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-        
         return `
             <div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4">
                 <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div>
@@ -284,52 +293,56 @@ const App = {
         }
     },
 
-    // --- ATENDIMENTO ---
+    // ABERTURA DE TICKET COM PROTEÇÃO DE ERROS
     async pickTicket(id) {
-        this.activeTicketId = id;
-        this.navigate('chat');
-        document.getElementById('menu-chat').classList.remove('hidden-view');
-        document.getElementById('chat-history').innerHTML = '';
-        this.switchTab('crm-info');
-        
-        let t = await agentAPI.getTicketDetails(id);
-        
-        if (t.status === 'open' || !t.agent_id) {
-            const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
-            if (myCount >= 10) {
-                alert("Limite de 10 atendimentos simultâneos alcançado!");
-                this.navigate('queue');
-                return;
+        try {
+            this.activeTicketId = id;
+            this.navigate('chat');
+            document.getElementById('menu-chat').classList.remove('hidden-view');
+            document.getElementById('chat-history').innerHTML = '';
+            this.switchTab('crm-info');
+            
+            let t = await agentAPI.getTicketDetails(id);
+            
+            if (t.status === 'open' || !t.agent_id) {
+                const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
+                if (myCount >= 10) {
+                    alert("Limite de 10 atendimentos simultâneos alcançado!");
+                    this.navigate('queue');
+                    return;
+                }
+                await agentAPI.reassignTicket(id, this.currentUser.id);
+                t.status = 'in_progress';
+                t.agent_id = this.currentUser.id;
+                await this.loadQueue(); // Garante que a fila saiba que é seu e mostre a bolha
             }
-            await agentAPI.reassignTicket(id, this.currentUser.id);
-            t.status = 'in_progress';
-            t.agent_id = this.currentUser.id;
-            await this.loadQueue(); // CORREÇÃO: Atualiza fila para gerar a bolha instantaneamente
+
+            this.renderBubbles(); 
+            this.currentCustomer = t.customers; 
+            
+            document.getElementById('chat-header-name').innerText = t.customers?.full_name || 'Desconhecido';
+            document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
+            document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido';
+            document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail';
+            document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto';
+            document.getElementById('crm-tag2').value = t.tag2_detail || '';
+
+            this.activeAgents = await agentAPI.getActiveAgents();
+            this.populateTransferDropdowns();
+            
+            if (t.customers?.email) this.loadCustomerHistory(t.customers.email);
+            if (t.customer_id) this.loadCustomerOrders(t.customer_id);
+
+            const msgs = await agentAPI.getMessages(id);
+            msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
+
+            if (this.messageSub) this.messageSub.unsubscribe();
+            this.messageSub = agentAPI.subscribeToMessages(id, (msg) => this.renderMsg(msg, 'customer'));
+            
+        } catch (e) {
+            console.error("Erro Crítico ao abrir chat:", e);
+            alert("Erro ao carregar os dados do chat: " + e.message);
         }
-
-        this.renderBubbles(); // Atualiza foco da bolha selecionada
-        this.currentCustomer = t.customers; 
-        
-        document.getElementById('chat-header-name').innerText = t.customers.full_name;
-        document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
-        document.getElementById('crm-name').innerText = t.customers.full_name;
-        document.getElementById('crm-email').innerText = t.customers.email;
-        document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto';
-        document.getElementById('crm-tag2').value = t.tag2_detail || '';
-
-        // Recarrega dropdown de transferência (com agentes online)
-        this.activeAgents = await agentAPI.getActiveAgents();
-        this.populateTransferDropdowns();
-        
-        // CORREÇÃO HISTÓRICO: Usa o e-mail para vincular o cliente corretamente
-        this.loadCustomerHistory(t.customers.email);
-        this.loadCustomerOrders(t.customer_id);
-
-        const msgs = await agentAPI.getMessages(id);
-        msgs.forEach(m => this.renderMsg(m.content, m.sender_type));
-
-        if (this.messageSub) this.messageSub.unsubscribe();
-        this.messageSub = agentAPI.subscribeToMessages(id, (msg) => this.renderMsg(msg, 'customer'));
     },
 
     renderMsg(text, type) {
@@ -389,7 +402,6 @@ const App = {
 
     async loadCustomerHistory(email) {
         try {
-            // Usa o novo método baseado em e-mail
             const hist = await agentAPI.getCustomerHistoryByEmail(email);
             const container = document.getElementById('history-list');
             if(hist.length === 0) { container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; return; }
