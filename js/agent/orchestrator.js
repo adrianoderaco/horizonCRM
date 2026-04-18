@@ -42,13 +42,11 @@ export const Orchestrator = {
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
             if (profile?.status !== 'online') return; 
 
-            // Conta os tickets EM ANDAMENTO
             const { data: myTickets } = await supabase.from('tickets')
                 .select('id, channel, last_sender')
                 .eq('agent_id', this.agentId)
                 .eq('status', 'in_progress');
 
-            // CÁLCULO INTELIGENTE: Só consome o limite se estiver aguardando o Analista (last_sender != 'agent')
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 

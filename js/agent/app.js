@@ -49,7 +49,7 @@ const App = {
             if (this.isRegisterMode) {
                 try { 
                     await agentAPI.register(document.getElementById('reg-name').value, email, pass); 
-                    alert("Aguarde aprovação do gestor."); 
+                    alert("Aguarde aprovação."); 
                     this.toggleAuthMode(); 
                 } catch (err) { 
                     alert("Erro: " + err.message); 
@@ -206,7 +206,7 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 input.value = ''; 
                 
-                await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido', '', 'Aguardando cliente');
+                await agentAPI.closeTicket(this.activeTicketId, '', '', 'E-mail respondido (Aguardando cliente)');
                 
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
                 this.activeTicketId = null;
@@ -254,7 +254,7 @@ const App = {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global.");
+            alert("Erro ao alterar Orquestrador.");
         }
     },
 
@@ -285,7 +285,7 @@ const App = {
                         this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); 
                     }
                 } catch(err) { 
-                    alert("Erro no upload do arquivo."); 
+                    alert("Erro no upload."); 
                 } finally { 
                     btnSend.innerHTML = origText; 
                     btnSend.disabled = false; 
@@ -332,7 +332,9 @@ const App = {
         if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
         try {
             await agentAPI.changeStatus(agentId, newStatus);
-            if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId);
+            if (newStatus !== 'online') {
+                await agentAPI.releaseMyTickets(agentId);
+            }
             this.loadTeam();
         } catch(e) { 
             alert("Erro ao alterar status do agente."); 
@@ -436,7 +438,7 @@ const App = {
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
             await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente', '', 'SLA de Inatividade');
+            await agentAPI.closeTicket(ticket.id, 'SLA', 'SLA', 'Encerrado Automaticamente por Inatividade');
             
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
@@ -446,7 +448,7 @@ const App = {
             }
             this.loadQueue();
         } catch(e) { 
-            console.error("Falha na macro de encerramento:", e); 
+            console.error("Falha macro:", e); 
         } finally { 
             this.closingTickets.delete(ticket.id); 
         }
@@ -515,6 +517,9 @@ const App = {
         } catch(e) { console.error("Erro na tela de UI de configurações", e); }
     },
 
+    // ==========================================
+    // RENDERIZAÇÃO DAS TAGS (CONFIGURAÇÕES)
+    // ==========================================
     renderSettingsTags() {
         const container = document.getElementById('settings-tags-list');
         if (!container) return;
@@ -522,18 +527,23 @@ const App = {
         let html = '';
         this.allSubjects.forEach(sub => {
             const subsubs = this.allSubsubjects.filter(ss => ss.subject_id === sub.id);
-            let subHtml = subsubs.map(ss => `<span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">${ss.label} <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500"><span class="material-symbols-outlined text-[10px]">close</span></button></span>`).join('');
+            let subHtml = subsubs.map(ss => `
+                <span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">
+                    ${ss.label} 
+                    <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500 transition-colors flex items-center"><span class="material-symbols-outlined text-[12px]">close</span></button>
+                </span>
+            `).join('');
             
             html += `
-            <div class="border border-slate-200 rounded-xl p-4 bg-white relative z-20">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="font-black text-slate-800 text-sm">${sub.label}</span>
-                    <button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-[10px] text-red-500 font-bold flex items-center gap-1 hover:underline"><span class="material-symbols-outlined text-[12px]">delete</span> Excluir Motivo</button>
+            <div class="border border-slate-200 rounded-xl p-5 bg-white relative z-20 shadow-sm">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                    <span class="font-black text-slate-800 text-base flex items-center gap-2"><span class="material-symbols-outlined text-slate-400">label</span> ${sub.label}</span>
+                    <button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-xs text-red-500 font-bold flex items-center gap-1 hover:underline bg-red-50 px-2 py-1 rounded"><span class="material-symbols-outlined text-[14px]">delete</span> Excluir Motivo</button>
                 </div>
-                <div class="flex flex-wrap gap-2 mb-3">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div>
+                <div class="flex flex-wrap gap-2 mb-4">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div>
                 <div class="flex gap-2">
-                    <input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium outline-none" placeholder="Novo Submotivo...">
-                    <button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 rounded-lg text-xs font-bold transition-colors">Adicionar</button>
+                    <input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-600" placeholder="Digite um novo Submotivo (Tag 2)...">
+                    <button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 rounded-lg text-xs font-bold transition-colors">Adicionar Submotivo</button>
                 </div>
             </div>`;
         });
@@ -566,11 +576,19 @@ const App = {
 
     async toggleSubject(id, isActive) {
         if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal?")) return;
-        try { await agentAPI.toggleSubject(id, isActive); this.allSubjects = await agentAPI.getAllSubjects(); this.renderSettingsTags(); } catch(e) { alert("Erro."); }
+        try { 
+            await agentAPI.toggleSubject(id, isActive); 
+            this.allSubjects = await agentAPI.getAllSubjects(); 
+            this.renderSettingsTags(); 
+        } catch(e) { alert("Erro ao excluir."); }
     },
 
     async toggleSubsubject(id, isActive) {
-        try { await agentAPI.toggleSubsubject(id, isActive); this.allSubsubjects = await agentAPI.getAllSubsubjects(); this.renderSettingsTags(); } catch(e) { alert("Erro."); }
+        try { 
+            await agentAPI.toggleSubsubject(id, isActive); 
+            this.allSubsubjects = await agentAPI.getAllSubsubjects(); 
+            this.renderSettingsTags(); 
+        } catch(e) { alert("Erro ao excluir submotivo."); }
     },
 
     insertMacroVar(variable) {
@@ -793,8 +811,11 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
-            // TAGS: Preenche os dropdowns de Tag 1
+            // CARREGA TAGS (MOTIVOS) E SUBMOTIVOS
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
+            this.allSubjects = await agentAPI.getAllSubjects();
+            this.allSubsubjects = await agentAPI.getAllSubsubjects();
+            
             const tag1Select = document.getElementById('crm-tag1');
             tag1Select.innerHTML = '<option value="">Selecione o Motivo Principal...</option>' + this.allSubjects.map(s => `<option value="${s.label}">${s.label}</option>`).join('');
             document.getElementById('crm-tag2').innerHTML = '<option value="">Selecione o Submotivo...</option>';
@@ -916,7 +937,7 @@ const App = {
         const notes = document.getElementById('crm-notes').value.trim();
 
         if (!tag1 || !tag2 || !notes) {
-            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações do Atendimento.");
+            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações.");
             return;
         }
 
