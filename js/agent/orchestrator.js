@@ -5,23 +5,39 @@ export const Orchestrator = {
     isRoutingActive: false,
     isSystemActive: false,
     systemSettings: null,
+    sweepInterval: null, // O novo Radar!
 
     async init(agentId, settings) {
         this.agentId = agentId;
         this.systemSettings = settings || {};
-        this.isSystemActive = this.systemSettings.is_orchestrator_active || false;
+        this.isSystemActive = this.systemSettings.is_orchestrator_active === true;
         
         console.log(`[Orquestrador] Iniciado. Agente: ${this.agentId} | Global Ligado: ${this.isSystemActive}`);
 
-        supabase.channel('orchestrator-realtime')
+        // 1. Escuta Tickets Novos (Criados pelo Cliente)
+        supabase.channel('orch-insert')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
-                console.log(`[Orquestrador] 🚨 NOVO TICKET NA FILA (ID: ${payload.new.id}). Avaliando...`);
                 if (this.isRoutingActive && this.isSystemActive) {
                     await this.evaluateAndClaim(payload.new);
-                } else {
-                    console.log(`[Orquestrador] ❌ Ignorado. Routing Local: ${this.isRoutingActive} | Global: ${this.isSystemActive}`);
                 }
             }).subscribe();
+
+        // 2. Escuta Tickets Devolvidos para a Fila (Atualizados pelo Gestor)
+        supabase.channel('orch-update')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
+                // Se o ticket ficou Open e perdeu o dono, é pra puxar!
+                if (this.isRoutingActive && this.isSystemActive && payload.new.agent_id === null) {
+                    await this.evaluateAndClaim(payload.new);
+                }
+            }).subscribe();
+
+        // 3. RADAR AGRESSIVO: Varre a fila a cada 5 segundos para não deixar nada travado
+        if (this.sweepInterval) clearInterval(this.sweepInterval);
+        this.sweepInterval = setInterval(() => {
+            if (this.isRoutingActive && this.isSystemActive) {
+                this.findAndClaimNext();
+            }
+        }, 5000); 
     },
 
     setStatus(isActive) {
@@ -32,7 +48,7 @@ export const Orchestrator = {
     },
 
     setSystemStatus(isActive) {
-        this.isSystemActive = isActive;
+        this.isSystemActive = isActive === true;
         if (this.isRoutingActive && this.isSystemActive) {
             this.findAndClaimNext();
         }
@@ -43,11 +59,7 @@ export const Orchestrator = {
         this.systemSettings = newSettings || {};
         this.isSystemActive = this.systemSettings.is_orchestrator_active === true;
         
-        console.log(`[Orquestrador] Settings atualizados. Global Ativo: ${this.isSystemActive}`);
-        
-        // Se acabou de ligar o global, varre a fila imediatamente
         if (!wasActive && this.isSystemActive && this.isRoutingActive) {
-            console.log("[Orquestrador] Global ligado. Buscando casos na fila...");
             this.findAndClaimNext();
         }
     },
@@ -56,46 +68,37 @@ export const Orchestrator = {
         if (!this.isRoutingActive || !this.isSystemActive) return;
 
         try {
-            console.log("[Orquestrador] 🔍 Buscando o próximo ticket da fila...");
-            
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
-            if (profile?.status !== 'online') {
-                console.log(`[Orquestrador] ❌ Busca abortada: Agente está em status '${profile?.status}'.`);
-                return;
-            }
+            if (!profile || profile.status !== 'online') return; 
 
+            // Conta os tickets EM ANDAMENTO deste agente
             const { data: myTickets } = await supabase.from('tickets')
                 .select('id, channel, last_sender')
                 .eq('agent_id', this.agentId)
                 .eq('status', 'in_progress');
 
-            // Só contabiliza o que está AGUARDANDO o analista
+            // CÁLCULO DE CAPACIDADE: Conta APENAS os casos aguardando ação do analista
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 
             const maxChats = profile.max_chats !== null ? profile.max_chats : 3;
             const maxEmails = profile.max_emails !== null ? profile.max_emails : 5;
 
-            const canTakeChat = profile?.can_web && (myWaitingChats < maxChats);
-            const canTakeEmail = profile?.can_email && (myWaitingEmails < maxEmails);
+            const canTakeChat = profile.can_web && (myWaitingChats < maxChats);
+            const canTakeEmail = profile.can_email && (myWaitingEmails < maxEmails);
 
-            if (!canTakeChat && !canTakeEmail) {
-                console.log(`[Orquestrador] ❌ Busca abortada: Limites atingidos. Chats(${myWaitingChats}/${maxChats}) Emails(${myWaitingEmails}/${maxEmails})`);
-                return; 
-            }
+            if (!canTakeChat && !canTakeEmail) return; 
 
             const allowedChannels = [];
             if (canTakeChat) allowedChannels.push('web');
             if (canTakeEmail) allowedChannels.push('email');
 
+            // Pega as SKILLS (Assuntos) do Agente
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const subjectIds = skills.map(s => s.subject_id);
-            
-            if (subjectIds.length === 0) {
-                console.log(`[Orquestrador] ❌ Busca abortada: Agente não possui NENHUMA Skill (Assunto) cadastrada.`);
-                return;
-            }
+            if (subjectIds.length === 0) return;
 
+            // Busca na fila o ticket mais antigo que cruza com as SKILLS e o CANAL
             const { data: tickets } = await supabase.from('tickets')
                 .select('*')
                 .eq('status', 'open')
@@ -106,13 +109,10 @@ export const Orchestrator = {
                 .limit(1);
 
             if (tickets && tickets.length > 0) {
-                console.log(`[Orquestrador] ✅ Ticket Encontrado! Puxando protocolo HZ-${tickets[0].protocol_number}`);
                 await this.evaluateAndClaim(tickets[0]);
-            } else {
-                console.log(`[Orquestrador] 💤 Nenhum ticket novo compatível com o agente no momento.`);
             }
         } catch (err) {
-            console.error("Erro no Orquestrador:", err);
+            console.error("Erro no Radar do Orquestrador:", err);
         }
     },
 
@@ -120,10 +120,11 @@ export const Orchestrator = {
         if (!this.isRoutingActive || !this.isSystemActive) return;
         
         try {
+            // Trava de segurança no milissegundo: Agente ainda pode pegar?
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
-            if (profile?.status !== 'online') return;
-            if (ticket.channel === 'web' && !profile?.can_web) return;
-            if (ticket.channel === 'email' && !profile?.can_email) return;
+            if (!profile || profile.status !== 'online') return;
+            if (ticket.channel === 'web' && !profile.can_web) return;
+            if (ticket.channel === 'email' && !profile.can_email) return;
 
             const { data: myTickets } = await supabase.from('tickets').select('id, channel, last_sender').eq('agent_id', this.agentId).eq('status', 'in_progress');
             
@@ -133,33 +134,26 @@ export const Orchestrator = {
             const maxChats = profile.max_chats !== null ? profile.max_chats : 3;
             const maxEmails = profile.max_emails !== null ? profile.max_emails : 5;
 
-            if (ticket.channel === 'web' && myWaitingChats >= maxChats) {
-                console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Limite de Chat Atingido.`);
-                return;
-            }
-            if (ticket.channel === 'email' && myWaitingEmails >= maxEmails) {
-                console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Limite de E-mail Atingido.`);
-                return;
-            }
+            if (ticket.channel === 'web' && myWaitingChats >= maxChats) return;
+            if (ticket.channel === 'email' && myWaitingEmails >= maxEmails) return;
 
+            // Agente tem a skill deste ticket exato?
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const hasSkill = skills.some(s => s.subject_id === ticket.subject_id);
-            if (!hasSkill) {
-                console.log(`[Orquestrador] ❌ Ticket HZ-${ticket.protocol_number} ignorado. Agente não tem a Skill necessária.`);
-                return;
-            }
+            if (!hasSkill) return;
 
+            // Se passou em tudo, captura!
             const { data } = await supabase.from('tickets')
                 .update({ agent_id: this.agentId, status: 'in_progress', last_interaction_at: new Date() })
                 .eq('id', ticket.id)
-                .is('agent_id', null)
+                .is('agent_id', null) // Impede que 2 agentes peguem ao mesmo tempo
                 .select();
 
             if (data && data.length > 0) {
-                console.log(`[Orquestrador] 🚀 SUCESSO! Ticket HZ-${ticket.protocol_number} atribuído ao agente.`);
+                console.log(`[Orquestrador] SUCESSO! HZ-${ticket.protocol_number} atribuído.`);
                 window.dispatchEvent(new CustomEvent('ticket-assigned', { detail: data[0] }));
                 
-                // Recursão rápida para puxar mais se houver limite sobrando
+                // Gatilho rápido: Acabou de pegar um, tenta puxar o próximo pra encher a fila logo!
                 this.findAndClaimNext();
             }
         } catch (err) { console.error("Falha ao avaliar/capturar:", err); }

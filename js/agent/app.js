@@ -34,7 +34,7 @@ const App = {
 
         window.addEventListener('ticket-assigned', async (e) => { 
             await this.loadQueue(); 
-            // UX FIX: Só abre forçado se a tela do agente estiver vazia. Se não, apenas cria a bolha.
+            // Só força abrir a tela de atendimento se o analista não estiver fazendo NADA
             if (!this.activeTicketId) {
                 this.pickTicket(e.detail.id); 
             }
@@ -90,7 +90,7 @@ const App = {
                     
                     const toggleRouteBtn = document.getElementById('toggle-routing');
                     if (toggleRouteBtn) {
-                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active;
+                        toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active === true;
                     }
                     this.renderDashboard(); 
                 }
@@ -106,7 +106,6 @@ const App = {
 
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
-                    // Se o agente está online e o queue mudou, o orquestrador tenta puxar mais se tiver espaço
                     if (this.currentUser && this.currentUser.status === 'online') {
                         Orchestrator.findAndClaimNext();
                     }
@@ -123,7 +122,7 @@ const App = {
                     Orchestrator.updateSettings(newCfg);
                     if (profile.role === 'gestor') {
                         const tg = document.getElementById('toggle-routing');
-                        if (tg) tg.checked = newCfg.is_orchestrator_active;
+                        if (tg) tg.checked = newCfg.is_orchestrator_active === true;
                     }
                 });
 
@@ -187,7 +186,7 @@ const App = {
             try { 
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 this.updateLocalBubble();
-                Orchestrator.findAndClaimNext(); 
+                Orchestrator.findAndClaimNext(); // Libera espaço no orquestrador
             } catch(err) { 
                 alert("Erro ao enviar mensagem."); 
             }
@@ -259,7 +258,7 @@ const App = {
             console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`);
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global.");
+            alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
         }
     },
 
@@ -665,6 +664,7 @@ const App = {
             tbody.innerHTML = tickets.map(t => {
                 const inProg = t.status === 'in_progress';
                 const isMine = t.agent_id === this.currentUser.id;
+                
                 const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Na Fila (Aguardando)';
 
                 let statusHtml = `
@@ -816,7 +816,7 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
-            // TAGS
+            // TAGS: Preenche os dropdowns de Tag 1
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
@@ -1031,7 +1031,6 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // AQUI ESTÁ O MODAL DE HISTÓRICO COM AS TAGS E NOTAS
     async viewPastChat(ticketId, protocolNumber) {
         try {
             const ticket = await agentAPI.getTicketDetails(ticketId); 
