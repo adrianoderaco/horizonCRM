@@ -13,6 +13,7 @@ const App = {
     currentCustomer: null,
     currentTicket: null,
     allSubjects: [],
+    allSubsubjects: [],
     activeAgents: [],
     timerInterval: null,
     activeTickets: [],
@@ -26,14 +27,7 @@ const App = {
             this.systemSettings = await agentAPI.getSystemSettings();
         } catch (e) {
             console.warn("Aviso: Configurações ausentes. Usando locais.");
-            this.systemSettings = { 
-                is_orchestrator_active: false, 
-                max_chat_tickets: 3, 
-                max_email_tickets: 5, 
-                chat_timeout_min: 10, 
-                email_timeout_hr: 24, 
-                closure_macro: "Olá!\n\nFicamos aguardando seu retorno e não tivemos sucesso. Atendimento encerrado.\n\nProtocolo: [protocolo]" 
-            };
+            this.systemSettings = { is_orchestrator_active: false, chat_timeout_min: 10, email_timeout_hr: 24, closure_macro: "Encerrado." };
         }
 
         this.startLiveTimers(); 
@@ -43,7 +37,6 @@ const App = {
             this.pickTicket(e.detail.id); 
         });
 
-        // LOGIN DO AGENTE/GESTOR
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login'); 
@@ -82,7 +75,9 @@ const App = {
                 document.getElementById('view-app').classList.remove('hidden-view');
                 
                 this.allSubjects = await agentAPI.getAllSubjects(); 
+                this.allSubsubjects = await agentAPI.getAllSubsubjects();
                 this.activeAgents = await agentAPI.getActiveAgents();
+                
                 Sidebar.render('sidebar-root', profile.role);
                 this.applyWatermark(profile.full_name);
 
@@ -93,7 +88,6 @@ const App = {
                     const toggleRouteBtn = document.getElementById('toggle-routing');
                     if (toggleRouteBtn) {
                         toggleRouteBtn.checked = this.systemSettings.is_orchestrator_active;
-                        toggleRouteBtn.addEventListener('change', (ev) => this.toggleGlobalOrchestrator(ev.target.checked));
                     }
                     this.renderDashboard(); 
                 }
@@ -107,14 +101,11 @@ const App = {
 
                 await this.loadQueue();
 
-                // SUBSCRIPTIONS GERAIS
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
-                    
                     if (this.currentUser && this.currentUser.status === 'online') {
                         Orchestrator.findAndClaimNext();
                     }
-
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
                         this.renderDashboard();
                     }
@@ -158,7 +149,6 @@ const App = {
                     }
                 });
 
-                // ESTA FUNÇÃO FOI CORRIGIDA PARA O CHAT INTERNO!
                 agentAPI.subscribeToInternalMessages(this.currentUser.id, async (msg) => {
                     if (document.getElementById('modal-internal-chat').classList.contains('hidden-view') || this.internalChatTarget !== msg.sender_id) {
                         const alertBtn = document.getElementById('btn-internal-alert');
@@ -166,7 +156,6 @@ const App = {
                             alertBtn.classList.remove('hidden-view');
                             try {
                                 const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).single();
-                                // Amarramos os dados no botão invisível para quando ele for clicado, saiba quem chamar.
                                 alertBtn.dataset.senderId = msg.sender_id;
                                 alertBtn.dataset.senderName = sender?.full_name || 'Equipe';
                             } catch(e) { console.error(e); }
@@ -177,13 +166,11 @@ const App = {
                 });
 
             } catch (error) { 
-                console.error("Erro fatal no login", error);
                 alert("Erro no login: " + error.message); 
                 btn.innerHTML = originalText; 
             }
         });
 
-        // ENVIO DE CHAT WEB
         document.getElementById('agent-chat-form')?.addEventListener('submit', async (e) => {
             e.preventDefault(); 
             const input = document.getElementById('chat-input'); 
@@ -195,13 +182,13 @@ const App = {
             
             try { 
                 await agentAPI.sendMessage(this.activeTicketId, text); 
-                this.updateLocalBubble(); 
+                this.updateLocalBubble();
+                Orchestrator.findAndClaimNext(); // Se virou bolha, libera espaço no orquestrador
             } catch(err) { 
-                alert("Erro ao enviar a mensagem."); 
+                alert("Erro ao enviar mensagem."); 
             }
         });
 
-        // ENVIO DE E-MAIL
         document.getElementById('agent-email-form')?.addEventListener('submit', async (e) => {
             e.preventDefault(); 
             const input = document.getElementById('email-input'); 
@@ -219,7 +206,7 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 input.value = ''; 
                 
-                await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido (Aguardando cliente)');
+                await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido', '', 'Aguardando cliente');
                 
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
                 this.activeTicketId = null;
@@ -324,7 +311,6 @@ const App = {
             this.currentUser.status = newStatus;
             
             if (newStatus !== 'online') {
-                // TRAVA ABSOLUTA: Libera apenas os tickets deste ID!
                 await agentAPI.releaseMyTickets(this.currentUser.id);
                 Orchestrator.setStatus(false);
                 alert(`Status alterado para ${newStatus.toUpperCase()}. Seus atendimentos retornaram para a fila.`);
@@ -346,12 +332,18 @@ const App = {
         if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
         try {
             await agentAPI.changeStatus(agentId, newStatus);
-            if (newStatus !== 'online') {
-                await agentAPI.releaseMyTickets(agentId);
-            }
+            if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId);
             this.loadTeam();
         } catch(e) { 
             alert("Erro ao alterar status do agente."); 
+        }
+    },
+
+    async updateAgentLimits(agentId, maxChats, maxEmails) {
+        try {
+            await agentAPI.updateAgentLimits(agentId, maxChats, maxEmails);
+        } catch (e) {
+            alert("Erro ao atualizar limites do agente.");
         }
     },
 
@@ -360,9 +352,7 @@ const App = {
         wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none';
         wm.style.zIndex = '99999'; 
         let spans = '';
-        for(let i=0; i<150; i++) {
-            spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
-        }
+        for(let i=0; i<150; i++) spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
         wm.innerHTML = spans; 
         document.body.appendChild(wm);
     },
@@ -441,13 +431,12 @@ const App = {
 
     async executeAutoClose(ticket) {
         try {
-            console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
             let msg = this.systemSettings.closure_macro;
             msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
             await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente (SLA Inatividade)');
+            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente', '', 'SLA de Inatividade');
             
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
@@ -515,12 +504,73 @@ const App = {
     async loadSettingsUI() {
         try {
             const cfg = await agentAPI.getSystemSettings();
-            document.getElementById('cfg-max-chat').value = cfg.max_chat_tickets || 3;
-            document.getElementById('cfg-max-email').value = cfg.max_email_tickets || 5;
             document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
             document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 24;
             document.getElementById('cfg-macro').value = cfg.closure_macro || '';
+            
+            this.allSubjects = await agentAPI.getAllSubjects();
+            this.allSubsubjects = await agentAPI.getAllSubsubjects();
+            this.renderSettingsTags();
+
         } catch(e) { console.error("Erro na tela de UI de configurações", e); }
+    },
+
+    renderSettingsTags() {
+        const container = document.getElementById('settings-tags-list');
+        if (!container) return;
+
+        let html = '';
+        this.allSubjects.forEach(sub => {
+            const subsubs = this.allSubsubjects.filter(ss => ss.subject_id === sub.id);
+            let subHtml = subsubs.map(ss => `<span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">${ss.label} <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500"><span class="material-symbols-outlined text-[10px]">close</span></button></span>`).join('');
+            
+            html += `
+            <div class="border border-slate-200 rounded-xl p-4 bg-white relative z-20">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="font-black text-slate-800 text-sm">${sub.label}</span>
+                    <button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-[10px] text-red-500 font-bold flex items-center gap-1 hover:underline"><span class="material-symbols-outlined text-[12px]">delete</span> Excluir Motivo</button>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div>
+                <div class="flex gap-2">
+                    <input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium outline-none" placeholder="Novo Submotivo...">
+                    <button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 rounded-lg text-xs font-bold transition-colors">Adicionar</button>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    },
+
+    async addTag1() {
+        const input = document.getElementById('new-tag1-input');
+        const val = input.value.trim();
+        if(!val) return;
+        try {
+            await agentAPI.createSubject(val);
+            input.value = '';
+            this.allSubjects = await agentAPI.getAllSubjects();
+            this.renderSettingsTags();
+        } catch(e) { alert("Erro ao criar Motivo."); }
+    },
+
+    async addTag2(subjectId) {
+        const input = document.getElementById(`new-tag2-${subjectId}`);
+        const val = input.value.trim();
+        if(!val) return;
+        try {
+            await agentAPI.createSubsubject(subjectId, val);
+            input.value = '';
+            this.allSubsubjects = await agentAPI.getAllSubsubjects();
+            this.renderSettingsTags();
+        } catch(e) { alert("Erro ao criar Submotivo."); }
+    },
+
+    async toggleSubject(id, isActive) {
+        if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal?")) return;
+        try { await agentAPI.toggleSubject(id, isActive); this.allSubjects = await agentAPI.getAllSubjects(); this.renderSettingsTags(); } catch(e) { alert("Erro."); }
+    },
+
+    async toggleSubsubject(id, isActive) {
+        try { await agentAPI.toggleSubsubject(id, isActive); this.allSubsubjects = await agentAPI.getAllSubsubjects(); this.renderSettingsTags(); } catch(e) { alert("Erro."); }
     },
 
     insertMacroVar(variable) {
@@ -536,8 +586,6 @@ const App = {
         btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
         try {
             const payload = { 
-                max_chat_tickets: parseInt(document.getElementById('cfg-max-chat').value), 
-                max_email_tickets: parseInt(document.getElementById('cfg-max-email').value), 
                 chat_timeout_min: parseInt(document.getElementById('cfg-chat-time').value), 
                 email_timeout_hr: parseInt(document.getElementById('cfg-email-time').value), 
                 closure_macro: document.getElementById('cfg-macro').value 
@@ -548,7 +596,7 @@ const App = {
         } catch (e) { 
             alert("Erro ao salvar as configurações."); 
         } finally { 
-            btn.innerHTML = `<span class="material-symbols-outlined">save</span> Salvar Configurações`; 
+            btn.innerHTML = `<span class="material-symbols-outlined">save</span> Salvar Configurações Gerais`; 
         }
     },
 
@@ -716,7 +764,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("O limite de 10 atendimentos simultâneos foi alcançado!"); 
+                    alert("O limite de atendimentos simultâneos foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -744,8 +792,13 @@ const App = {
             
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
-            document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto'; 
-            document.getElementById('crm-tag2').value = t.tag2_detail || '';
+            
+            // TAGS: Preenche os dropdowns de Tag 1
+            document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
+            const tag1Select = document.getElementById('crm-tag1');
+            tag1Select.innerHTML = '<option value="">Selecione o Motivo Principal...</option>' + this.allSubjects.map(s => `<option value="${s.label}">${s.label}</option>`).join('');
+            document.getElementById('crm-tag2').innerHTML = '<option value="">Selecione o Submotivo...</option>';
+            document.getElementById('crm-notes').value = t.agent_notes || '';
 
             this.activeAgents = await agentAPI.getActiveAgents(); 
             this.populateTransferDropdowns();
@@ -779,6 +832,19 @@ const App = {
             }
         } catch (e) { 
             alert("Erro ao carregar os dados do chat: " + e.message); 
+        }
+    },
+
+    filterTag2() {
+        const tag1Label = document.getElementById('crm-tag1').value;
+        const tag2Select = document.getElementById('crm-tag2');
+        tag2Select.innerHTML = '<option value="">Selecione o Submotivo...</option>';
+        if (!tag1Label) return;
+        
+        const parentSubject = this.allSubjects.find(s => s.label === tag1Label);
+        if (parentSubject) {
+            const subs = this.allSubsubjects.filter(ss => ss.subject_id === parentSubject.id);
+            tag2Select.innerHTML += subs.map(ss => `<option value="${ss.label}">${ss.label}</option>`).join('');
         }
     },
 
@@ -845,9 +911,18 @@ const App = {
     },
 
     async closeTicket() {
+        const tag1 = document.getElementById('crm-tag1').value;
+        const tag2 = document.getElementById('crm-tag2').value;
+        const notes = document.getElementById('crm-notes').value.trim();
+
+        if (!tag1 || !tag2 || !notes) {
+            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações do Atendimento.");
+            return;
+        }
+
         if (!confirm("Tem certeza que deseja encerrar o atendimento atual?")) return;
         try { 
-            await agentAPI.closeTicket(this.activeTicketId, document.getElementById('crm-tag2').value); 
+            await agentAPI.closeTicket(this.activeTicketId, tag1, tag2, notes); 
             this.activeTicketId = null; 
             document.getElementById('menu-chat').classList.add('hidden-view'); 
             this.navigate('queue'); 
@@ -883,11 +958,13 @@ const App = {
     async transferTicket() {
         const newSub = document.getElementById('transfer-subject').value; 
         const newAg = document.getElementById('transfer-agent').value;
+        const notes = document.getElementById('crm-notes').value.trim();
+
         if (!newSub && !newAg) return;
         
         if (confirm("Você quer mesmo transferir este chamado para outra pessoa/fila?")) { 
             try { 
-                await agentAPI.transferTicket(this.activeTicketId, newSub, newAg, document.getElementById('crm-tag2').value); 
+                await agentAPI.transferTicket(this.activeTicketId, newSub, newAg, notes); 
                 this.activeTicketId = null; 
                 document.getElementById('menu-chat').classList.add('hidden-view'); 
                 this.navigate('queue'); 
@@ -907,17 +984,24 @@ const App = {
                 return; 
             }
             
-            container.innerHTML = hist.map(h => `
-            <div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300 relative z-20">
-                <div>
-                    <div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div>
-                    <div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'Sem Assunto'}</div>
-                    <div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div>
-                </div>
-                <button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa Completa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all">
-                    <span class="material-symbols-outlined text-sm">visibility</span>
-                </button>
-            </div>`).join('');
+            container.innerHTML = hist.map(h => {
+                const tagsHtml = h.agent_tag1 ? `<div class="mt-2 text-[10px]"><span class="bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold">${h.agent_tag1}</span> <span class="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold">${h.agent_tag2 || ''}</span></div><div class="text-[10px] text-slate-500 mt-1 italic bg-slate-50 p-1.5 rounded">"${h.agent_notes || ''}"</div>` : '';
+
+                return `
+                <div class="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-start transition-all hover:border-blue-300 relative z-20">
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center w-full">
+                            <div class="text-[10px] font-black text-blue-600">HZ-${h.protocol_number}</div>
+                            <div class="text-[9px] font-bold text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div class="text-[11px] font-bold text-slate-700 mt-1 truncate max-w-[200px]">Original: ${h.ticket_subjects?.label || 'Sem Assunto'}</div>
+                        ${tagsHtml}
+                    </div>
+                    <button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa Completa" class="ml-2 w-8 h-8 flex shrink-0 items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all">
+                        <span class="material-symbols-outlined text-sm">visibility</span>
+                    </button>
+                </div>`
+            }).join('');
         } catch (e) { console.error(e); }
     },
 
@@ -1089,8 +1173,17 @@ const App = {
             let statusBadge = member.status === 'online' ? '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold text-[10px]">ONLINE</span>' : member.status === 'pausa' ? '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold text-[10px]">EM PAUSA</span>' : member.status === 'backoffice' ? '<span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold text-[10px]">BACKOFFICE</span>' : '<span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold text-[10px]">OFFLINE</span>';
             const timeHtml = `<div class="mb-2">${statusBadge}</div><div class="text-[10px] text-slate-500 font-bold space-y-0.5"><div><span class="text-green-600">Online:</span> ${fmtTime(onlineSecs)}</div><div><span class="text-amber-600">Pausa:</span> ${fmtTime(pausaSecs)}</div><div><span class="text-purple-600">Backoffice:</span> ${fmtTime(backSecs)}</div></div>`;
             
-            const activeCount = this.activeTickets.filter(t => t.agent_id === member.id && t.status === 'in_progress').length;
-            const ticketsBadge = `<div class="mt-2 bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded w-max border border-blue-100 flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">headset_mic</span> ${activeCount} em curso</div>`;
+            const agentTickets = this.activeTickets.filter(t => t.agent_id === member.id && t.status === 'in_progress');
+            
+            let chatAguardando = agentTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
+            let chatBolha = agentTickets.filter(t => t.channel === 'web' && t.last_sender === 'agent').length;
+            
+            let emailAguardando = agentTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
+            let emailBolha = agentTickets.filter(t => t.channel === 'email' && t.last_sender === 'agent').length;
+
+            let ticketsBadge = '';
+            if (member.can_web) ticketsBadge += `<div class="mt-2 bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded w-max border border-blue-100 flex items-center gap-1">CHAT: ${chatAguardando} ag. você | ${chatBolha} ag. cliente</div>`;
+            if (member.can_email) ticketsBadge += `<div class="mt-1 bg-orange-50 text-orange-700 text-[10px] font-black px-2 py-1 rounded w-max border border-orange-100 flex items-center gap-1">E-MAIL: ${emailAguardando} ag. você | ${emailBolha} ag. cliente</div>`;
 
             let skillsHTML = '';
             if (member.is_approved) {
@@ -1111,6 +1204,10 @@ const App = {
                     <div class="flex gap-4 border-b pb-2 border-slate-100">
                         <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" ${member.can_web ? 'checked' : ''} onchange="agentApp.toggleChannel('${member.id}', 'web', this.checked)" class="w-3 h-3 text-blue-600"><span class="text-[10px] font-black text-slate-600">WEB (Chat)</span></label>
                         <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" ${member.can_email ? 'checked' : ''} onchange="agentApp.toggleChannel('${member.id}', 'email', this.checked)" class="w-3 h-3 text-blue-600"><span class="text-[10px] font-black text-slate-600">E-MAIL</span></label>
+                    </div>
+                    <div class="mt-2 flex gap-3 border-b border-slate-100 pb-2">
+                        <label class="text-[9px] font-bold text-slate-500 flex flex-col">Max Chats <input type="number" min="1" value="${member.max_chats || 3}" onchange="agentApp.updateAgentLimits('${member.id}', this.value, null)" class="border rounded px-1.5 py-0.5 mt-0.5 w-14 text-center"></label>
+                        <label class="text-[9px] font-bold text-slate-500 flex flex-col">Max E-mails <input type="number" min="1" value="${member.max_emails || 5}" onchange="agentApp.updateAgentLimits('${member.id}', null, this.value)" class="border rounded px-1.5 py-0.5 mt-0.5 w-14 text-center"></label>
                     </div>
                     <div class="flex flex-wrap gap-1 min-h-[24px]">
                         ${skillsBadges || '<span class="text-[10px] text-slate-400 font-bold italic">Nenhum assunto</span>'}

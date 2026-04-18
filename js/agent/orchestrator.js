@@ -4,12 +4,10 @@ export const Orchestrator = {
     agentId: null,
     isRoutingActive: false,
     isSystemActive: false,
-    systemSettings: null,
 
     async init(agentId, settings) {
         this.agentId = agentId;
-        this.systemSettings = settings || {};
-        this.isSystemActive = this.systemSettings.is_orchestrator_active || false;
+        this.isSystemActive = settings?.is_orchestrator_active || false;
         
         supabase.channel('orchestrator-realtime')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
@@ -34,7 +32,6 @@ export const Orchestrator = {
     },
 
     updateSettings(newSettings) {
-        this.systemSettings = newSettings;
         this.isSystemActive = newSettings.is_orchestrator_active || false;
     },
 
@@ -42,21 +39,21 @@ export const Orchestrator = {
         if (!this.isRoutingActive || !this.isSystemActive) return;
 
         try {
-            const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status').eq('id', this.agentId).single();
+            const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
             if (profile?.status !== 'online') return; 
 
-            // Conta quantos casos ESTÃO AGUARDANDO O ANALISTA RESPONDER
+            // Conta os tickets EM ANDAMENTO
             const { data: myTickets } = await supabase.from('tickets')
                 .select('id, channel, last_sender')
                 .eq('agent_id', this.agentId)
                 .eq('status', 'in_progress');
 
-            // Só conta os que estão aguardando agente (last_sender != 'agent')
+            // CÁLCULO INTELIGENTE: Só consome o limite se estiver aguardando o Analista (last_sender != 'agent')
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 
-            const maxChats = this.systemSettings.max_chat_tickets || 3;
-            const maxEmails = this.systemSettings.max_email_tickets || 5;
+            const maxChats = profile.max_chats || 3;
+            const maxEmails = profile.max_emails || 5;
 
             const canTakeChat = profile?.can_web && (myWaitingChats < maxChats);
             const canTakeEmail = profile?.can_email && (myWaitingEmails < maxEmails);
@@ -92,7 +89,7 @@ export const Orchestrator = {
         if (!this.isRoutingActive || !this.isSystemActive) return;
         
         try {
-            const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status').eq('id', this.agentId).single();
+            const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
             if (profile?.status !== 'online') return;
             if (ticket.channel === 'web' && !profile?.can_web) return;
             if (ticket.channel === 'email' && !profile?.can_email) return;
@@ -102,8 +99,8 @@ export const Orchestrator = {
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
             
-            const maxChats = this.systemSettings.max_chat_tickets || 3;
-            const maxEmails = this.systemSettings.max_email_tickets || 5;
+            const maxChats = profile.max_chats || 3;
+            const maxEmails = profile.max_emails || 5;
 
             if (ticket.channel === 'web' && myWaitingChats >= maxChats) return;
             if (ticket.channel === 'email' && myWaitingEmails >= maxEmails) return;
