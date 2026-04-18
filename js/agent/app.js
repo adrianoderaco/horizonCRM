@@ -82,7 +82,11 @@ const App = {
                     }
                 });
 
-            } catch (error) { alert("Erro no login."); btn.innerHTML = originalText; }
+            } catch (error) { 
+                alert("Erro detalhado: " + error.message); 
+                console.error(error); 
+                btn.innerHTML = originalText; 
+            }
         });
 
         document.getElementById('agent-chat-form').addEventListener('submit', async (e) => {
