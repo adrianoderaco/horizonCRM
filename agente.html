@@ -65,7 +65,7 @@
                 <div id="bubble-container" class="flex items-center gap-2 overflow-x-auto flex-1 px-4 py-1" style="scrollbar-width: none;"></div>
                 
                 <div class="flex items-center gap-4 shrink-0">
-                    <button id="btn-internal-alert" onclick="agentApp.openInternalChat()" class="hidden-view bg-red-100 text-red-600 px-3 py-1.5 rounded-full flex items-center gap-1 font-bold text-xs animate-bounce" title="Nova Mensagem Interna">
+                    <button id="btn-internal-alert" onclick="agentApp.openInternalChat(this.dataset.senderId, this.dataset.senderName)" class="hidden-view bg-red-100 text-red-600 px-3 py-1.5 rounded-full flex items-center gap-1 font-bold text-xs animate-bounce" title="Nova Mensagem Interna">
                         <span class="material-symbols-outlined text-[16px]">forum</span> Chat
                     </button>
 

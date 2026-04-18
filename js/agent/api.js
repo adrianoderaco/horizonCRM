@@ -1,14 +1,12 @@
 import { supabase } from '../supabase.js';
 
 export const agentAPI = {
-    
     // ==========================================
     // 1. AUTENTICAÇÃO E STATUS DE AGENTE
     // ==========================================
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        
         await this.changeStatus(data.user.id, 'online');
         return data;
     },
@@ -20,7 +18,6 @@ export const agentAPI = {
     async register(name, email, password) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        
         if (data.user) {
             await supabase.from('profiles').insert([{ 
                 id: data.user.id, 
@@ -211,7 +208,6 @@ export const agentAPI = {
             last_sender: 'agent', 
             last_interaction_at: new Date() 
         }).eq('id', ticketId);
-        
         if (tkErr) throw tkErr;
     },
 
@@ -315,6 +311,7 @@ export const agentAPI = {
         }
     },
 
+    // ESTA FUNÇÃO FOI CORRIGIDA PARA NÃO DAR O ERRO DO '.or'
     async getInternalMessages(user1, user2) {
         if (!user1 || !user2) return []; 
         

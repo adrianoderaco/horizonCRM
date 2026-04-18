@@ -67,14 +67,11 @@ const App = {
             }
 
             try {
-                console.log("Autenticando usuário...");
                 const authData = await agentAPI.login(email, pass);
-                
-                console.log("Buscando dados do perfil...");
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
                 
                 if (!profile || !profile.is_approved) { 
-                    alert("Seu acesso ainda está pendente de aprovação."); 
+                    alert("Acesso pendente."); 
                     await supabase.auth.signOut(); 
                     btn.innerHTML = originalText; 
                     return; 
@@ -84,7 +81,6 @@ const App = {
                 document.getElementById('view-login').classList.add('hidden-view'); 
                 document.getElementById('view-app').classList.remove('hidden-view');
                 
-                console.log("Carregando recursos de fila...");
                 this.allSubjects = await agentAPI.getAllSubjects(); 
                 this.activeAgents = await agentAPI.getActiveAgents();
                 Sidebar.render('sidebar-root', profile.role);
@@ -162,6 +158,7 @@ const App = {
                     }
                 });
 
+                // ESTA FUNÇÃO FOI CORRIGIDA PARA O CHAT INTERNO!
                 agentAPI.subscribeToInternalMessages(this.currentUser.id, async (msg) => {
                     if (document.getElementById('modal-internal-chat').classList.contains('hidden-view') || this.internalChatTarget !== msg.sender_id) {
                         const alertBtn = document.getElementById('btn-internal-alert');
@@ -169,7 +166,9 @@ const App = {
                             alertBtn.classList.remove('hidden-view');
                             try {
                                 const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).single();
-                                alertBtn.onclick = () => agentApp.openInternalChat(msg.sender_id, sender?.full_name || 'Equipe');
+                                // Amarramos os dados no botão invisível para quando ele for clicado, saiba quem chamar.
+                                alertBtn.dataset.senderId = msg.sender_id;
+                                alertBtn.dataset.senderName = sender?.full_name || 'Equipe';
                             } catch(e) { console.error(e); }
                         }
                     } else {
@@ -325,6 +324,7 @@ const App = {
             this.currentUser.status = newStatus;
             
             if (newStatus !== 'online') {
+                // TRAVA ABSOLUTA: Libera apenas os tickets deste ID!
                 await agentAPI.releaseMyTickets(this.currentUser.id);
                 Orchestrator.setStatus(false);
                 alert(`Status alterado para ${newStatus.toUpperCase()}. Seus atendimentos retornaram para a fila.`);
@@ -441,6 +441,7 @@ const App = {
 
     async executeAutoClose(ticket) {
         try {
+            console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
             let msg = this.systemSettings.closure_macro;
             msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
@@ -715,7 +716,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("O limite máximo simultâneo foi alcançado!"); 
+                    alert("O limite de 10 atendimentos simultâneos foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -1063,6 +1064,9 @@ const App = {
         }).join('');
     },
 
+    // ==========================================
+    // GESTÃO DE EQUIPE E CHAT INTERNO (GESTOR)
+    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 

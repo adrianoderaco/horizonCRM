@@ -45,12 +45,13 @@ export const Orchestrator = {
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status').eq('id', this.agentId).single();
             if (profile?.status !== 'online') return; 
 
-            // Verifica quantos tickets estão AGUARDANDO o analista
+            // Conta quantos casos ESTÃO AGUARDANDO O ANALISTA RESPONDER
             const { data: myTickets } = await supabase.from('tickets')
                 .select('id, channel, last_sender')
                 .eq('agent_id', this.agentId)
                 .eq('status', 'in_progress');
 
+            // Só conta os que estão aguardando agente (last_sender != 'agent')
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 
@@ -83,7 +84,7 @@ export const Orchestrator = {
                 await this.evaluateAndClaim(tickets[0]);
             }
         } catch (err) {
-            console.error("Erro na busca de tickets pelo Orquestrador:", err);
+            console.error("Erro Orquestrador:", err);
         }
     },
 
@@ -120,8 +121,6 @@ export const Orchestrator = {
             if (data && data.length > 0) {
                 window.dispatchEvent(new CustomEvent('ticket-assigned', { detail: data[0] }));
             }
-        } catch (err) {
-            console.error("Erro de validação no Orquestrador:", err);
-        }
+        } catch (err) { console.error(err); }
     }
 };
