@@ -38,7 +38,7 @@ export const agentAPI = {
 
     async getPendingTickets() {
         const { data, error } = await supabase.from('tickets')
-            .select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
+            .select(`id, protocol_number, channel, created_at, assigned_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
             .in('status', ['open', 'in_progress'])
             .order('created_at', { ascending: true });
         if (error) throw error;
@@ -46,7 +46,7 @@ export const agentAPI = {
     },
 
     async getDashboardTickets(startDate, endDate) {
-        let query = supabase.from('tickets').select(`id, protocol_number, channel, created_at, closed_at, status, agent_id, rating, agent_tag1, agent_tag2, agent_notes, customers(full_name, email), ticket_subjects(label)`);
+        let query = supabase.from('tickets').select(`id, protocol_number, channel, created_at, assigned_at, closed_at, status, agent_id, rating, agent_tag1, agent_tag2, agent_notes, customers(full_name, email), ticket_subjects(label)`);
         if (startDate) query = query.gte('created_at', startDate + 'T00:00:00.000Z');
         if (endDate) query = query.lte('created_at', endDate + 'T23:59:59.999Z');
         const { data, error } = await query.order('created_at', { ascending: false });
@@ -79,33 +79,35 @@ export const agentAPI = {
             agent_notes: notes,
             status: 'open', 
             last_interaction_at: new Date(), 
-            is_upload_enabled: false 
+            is_upload_enabled: false,
+            assigned_at: null 
         };
-        if (newAgentId) { updates.agent_id = newAgentId; } else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
+        if (newAgentId) { updates.agent_id = newAgentId; updates.assigned_at = new Date(); updates.status = 'in_progress'; } 
+        else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
         const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
         if (error) throw error;
     },
 
     async releaseMyTickets(agentId) {
         if (!agentId) throw new Error("ID do agente é obrigatório.");
-        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false }).eq('agent_id', agentId).eq('status', 'in_progress');
+        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false, assigned_at: null }).eq('agent_id', agentId).eq('status', 'in_progress');
         if (error) throw error;
     },
 
     async releaseTicketsByChannel(agentId, channel) {
         if (!agentId) throw new Error("ID do agente é obrigatório.");
-        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false }).eq('agent_id', agentId).eq('channel', channel).eq('status', 'in_progress');
+        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open', is_upload_enabled: false, assigned_at: null }).eq('agent_id', agentId).eq('channel', channel).eq('status', 'in_progress');
         if (error) throw error;
     },
 
     async reassignTicket(ticketId, newAgentId) {
-        const updates = newAgentId ? { agent_id: newAgentId, status: 'in_progress', last_interaction_at: new Date() } : { agent_id: null, status: 'open', last_interaction_at: new Date() };
+        const updates = newAgentId ? { agent_id: newAgentId, status: 'in_progress', assigned_at: new Date(), last_interaction_at: new Date() } : { agent_id: null, status: 'open', assigned_at: null, last_interaction_at: new Date() };
         const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
         if (error) throw error;
     },
 
     async getActiveAgents() {
-        const { data, error } = await supabase.from('profiles').select('id, full_name, can_web, can_email, status').eq('is_approved', true).eq('status', 'online').order('full_name');
+        const { data, error } = await supabase.from('profiles').select('id, full_name, can_web, can_email, status, team_group').eq('is_approved', true).eq('status', 'online').order('full_name');
         if (error) throw error;
         return data;
     },
@@ -131,17 +133,11 @@ export const agentAPI = {
         const { error: msgErr } = await supabase.from('messages').insert([payload]);
         if (msgErr) throw msgErr;
         
-        // Zera a flag de Alerta sempre que o Agente ou Cliente respondem ativamente
-        const { error: tkErr } = await supabase.from('tickets').update({ 
-            last_sender: 'agent', 
-            last_interaction_at: new Date(),
-            has_warning_sent: false
-        }).eq('id', ticketId);
+        const { error: tkErr } = await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date(), has_warning_sent: false }).eq('id', ticketId);
         if (tkErr) throw tkErr;
     },
 
     async sendWarningMacro(ticketId, content) {
-        // Envia a mensagem mas NÃO altera o last_interaction_at, para o cronômetro continuar
         const payload = { ticket_id: ticketId, sender_type: 'agent', content: content };
         const { error: msgErr } = await supabase.from('messages').insert([payload]);
         if (msgErr) throw msgErr;
@@ -204,6 +200,11 @@ export const agentAPI = {
             const { error } = await supabase.from('profiles').update(updates).eq('id', agentId);
             if (error) throw error;
         }
+    },
+
+    async updateAgentGroup(agentId, groupName) {
+        const { error } = await supabase.from('profiles').update({ team_group: groupName || 'Geral' }).eq('id', agentId);
+        if (error) throw error;
     },
 
     async getAllSubjects() {
