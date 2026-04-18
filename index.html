@@ -48,7 +48,7 @@
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Assunto do Contato *</label>
                         <select id="ticket-subject" class="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none font-medium text-slate-700" required>
                             <option value="">Carregando assuntos...</option>
-                            </select>
+                        </select>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Número do Pedido</label>
@@ -73,9 +73,7 @@
         </section>
 
         <section id="view-success" class="hidden-view max-w-md w-full bg-white rounded-3xl p-12 text-center shadow-xl border border-gray-100">
-            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span class="material-symbols-outlined text-4xl">check_circle</span>
-            </div>
+            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6"><span class="material-symbols-outlined text-4xl">check_circle</span></div>
             <h2 class="text-3xl font-extrabold tracking-tight mb-2">Ticket Aberto!</h2>
             <p class="text-slate-500 mb-6">Sua solicitação foi registrada com sucesso. Acompanhe pelo protocolo:</p>
             <div class="bg-slate-100 p-4 rounded-xl font-black text-2xl tracking-widest text-slate-800 mb-6" id="success-protocol">HZ-0000</div>
@@ -85,21 +83,14 @@
         <section id="view-chat" class="hidden-view w-full max-w-3xl h-[85vh] bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden relative">
             <header class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-md">
-                        <span class="material-symbols-outlined text-white">support_agent</span>
-                    </div>
+                    <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-md"><span class="material-symbols-outlined text-white">support_agent</span></div>
                     <div>
                         <h1 class="text-lg font-extrabold text-slate-900 leading-none">Suporte Horizon</h1>
-                        <div class="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">
-                            Protocolo: <span id="chat-protocol" class="text-blue-600">---</span>
-                        </div>
+                        <div class="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">Protocolo: <span id="chat-protocol" class="text-blue-600">---</span></div>
                     </div>
                 </div>
             </header>
-
-            <div id="chat-area" class="flex-1 overflow-y-auto p-6 bg-white space-y-6">
-                </div>
-
+            <div id="chat-area" class="flex-1 overflow-y-auto p-6 bg-white space-y-6"></div>
             <footer class="p-4 bg-slate-50 border-t border-slate-100 shrink-0">
                 <form id="chat-form" class="flex items-end gap-3 bg-white border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-600 transition-all">
                     <textarea id="chat-input" class="flex-1 bg-transparent border-none outline-none text-sm p-3 resize-none max-h-32 min-h-[44px]" placeholder="Digite sua mensagem..."></textarea>
@@ -107,6 +98,28 @@
                 </form>
             </footer>
         </section>
+
+        <section id="view-nps" class="hidden-view max-w-xl w-full bg-white rounded-3xl p-10 text-center shadow-xl border border-gray-100">
+            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span class="material-symbols-outlined text-3xl">star</span>
+            </div>
+            <h2 class="text-3xl font-extrabold tracking-tight mb-2 text-slate-900">Atendimento Encerrado</h2>
+            <p class="text-slate-500 font-medium mb-8">Em uma escala de 1 a 10, o quanto você indicaria nosso atendimento para um amigo ou familiar?</p>
+            
+            <div class="flex flex-wrap justify-center gap-2 mb-4" id="nps-buttons">
+                </div>
+            <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 px-2">
+                <span>1 - Nada Provável</span>
+                <span>10 - Muito Provável</span>
+            </div>
+            
+            <div id="nps-thanks" class="hidden-view bg-green-50 text-green-700 p-4 rounded-xl font-bold mb-6">
+                Obrigado pela sua avaliação!
+            </div>
+            
+            <button onclick="location.reload()" class="font-bold text-slate-500 hover:text-blue-600 transition-colors">Voltar ao início</button>
+        </section>
+
     </main>
 
     <script type="module" src="js/client/app.js"></script>
