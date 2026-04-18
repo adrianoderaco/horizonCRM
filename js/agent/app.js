@@ -1,7 +1,7 @@
-// Arquivo: js/agent/app.js
 import { agentAPI } from './api.js';
 import { supabase } from '../supabase.js';
 import { Orchestrator } from './orchestrator.js';
+import { Sidebar } from './sidebar.js'; // <-- NOVA LINHA
 
 const App = {
     activeTicketId: null,
@@ -61,10 +61,11 @@ const App = {
                 this.allSubjects = await agentAPI.getAllSubjects();
                 this.activeAgents = await agentAPI.getActiveAgents();
                 
-                // LIBERA MENUS SE FOR GESTOR
+                // INJETA O MENU LATERAL DINAMICAMENTE
+                Sidebar.render('sidebar-root', profile.role);
+
+                // LIBERA O BOTÃO DO ORQUESTRADOR NO CABEÇALHO (Se for gestor)
                 if (profile.role === 'gestor') {
-                    document.getElementById('menu-team').classList.remove('hidden-view');
-                    document.getElementById('menu-dashboard').classList.remove('hidden-view');
                     document.getElementById('wrapper-routing').classList.remove('hidden-view');
                 }
                 
