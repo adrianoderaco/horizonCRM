@@ -12,7 +12,7 @@
         body { font-family: 'Manrope', sans-serif; background-color: #f8f9fa; color: #191c1d; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
         .hidden-view { display: none !important; }
-        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
@@ -48,12 +48,17 @@
     </section>
 
     <div id="view-app" class="hidden-view h-screen flex">
+        
         <div id="sidebar-root" class="h-full shrink-0"></div>
 
         <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
-            <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 z-10">
-                <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">Console Operacional</div>
-                <div class="flex items-center gap-4">
+            
+            <header class="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 z-10 gap-4">
+                <div class="text-sm font-bold text-slate-400 uppercase tracking-widest shrink-0">Console</div>
+                
+                <div id="bubble-container" class="flex items-center gap-2 overflow-x-auto flex-1 px-4 py-1" style="scrollbar-width: none;"></div>
+
+                <div class="flex items-center gap-4 shrink-0">
                     <div id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200">
                         <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
                         <input type="checkbox" id="toggle-routing" class="sr-only peer" onchange="agentApp.toggleRouting(this.checked)">
@@ -64,6 +69,7 @@
             </header>
 
             <main class="flex-1 overflow-hidden relative">
+                
                 <section id="sec-queue" class="p-8 h-full overflow-y-auto">
                     <div class="max-w-6xl mx-auto">
                         <h2 class="text-3xl font-black text-slate-900 mb-6 flex justify-between items-center">
@@ -82,7 +88,10 @@
                 </section>
                 
                 <section id="sec-team" class="p-8 h-full overflow-y-auto hidden-view">
-                    <div class="max-w-5xl mx-auto"><h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2><div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Analista</th><th class="p-5">Status / Acesso</th><th class="p-5">Skills (Assuntos)</th><th class="p-5 text-right">Ações</th></tr></thead><tbody class="divide-y" id="team-tbody"></tbody></table></div></div>
+                    <div class="max-w-5xl mx-auto">
+                        <h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2>
+                        <div class="bg-white rounded-3xl border shadow-sm overflow-hidden"><table class="w-full text-left"><thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5">Analista</th><th class="p-5">Status / Acesso</th><th class="p-5">Skills (Assuntos)</th><th class="p-5 text-right">Ações</th></tr></thead><tbody class="divide-y" id="team-tbody"></tbody></table></div>
+                    </div>
                 </section>
 
                 <section id="sec-dashboard" class="p-8 h-full overflow-y-auto hidden-view">
@@ -90,33 +99,19 @@
                         <h2 class="text-3xl font-black text-slate-900">Dashboard Executivo</h2>
                         
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total de Tickets</div>
-                                <div class="text-4xl font-black text-slate-900" id="stat-total">0</div>
-                            </div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div>
-                                <div class="text-4xl font-black text-blue-600" id="stat-open">0</div>
-                            </div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div>
-                                <div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div>
-                            </div>
-                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between">
-                                <div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Total Vendas</div>
-                                <div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div>
-                            </div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">confirmation_number</span> Total</div><div class="text-4xl font-black text-slate-900" id="stat-total">0</div></div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-blue-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">pending_actions</span> Em Aberto</div><div class="text-4xl font-black text-blue-600" id="stat-open">0</div></div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-green-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">star</span> Média NPS</div><div class="text-4xl font-black text-green-600" id="stat-nps">0.0</div></div>
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div class="text-[10px] font-black text-orange-500 uppercase mb-2 flex items-center gap-1"><span class="material-symbols-outlined text-sm">payments</span> Vendas</div><div class="text-4xl font-black text-orange-600 truncate" id="stat-sales">R$ 0,00</div></div>
                         </div>
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div class="bg-white p-8 rounded-3xl border shadow-sm flex flex-col items-center">
                                 <h3 class="w-full font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Status dos Atendimentos</h3>
-                                <div class="relative w-full max-w-[300px] aspect-square">
-                                    <canvas id="chartStatus"></canvas>
-                                </div>
+                                <div class="relative w-full max-w-[300px] aspect-square"><canvas id="chartStatus"></canvas></div>
                             </div>
                             <div class="bg-white p-8 rounded-3xl border shadow-sm overflow-hidden flex flex-col">
-                                <h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Performance por Analista (NPS)</h3>
+                                <h3 class="font-black text-slate-900 mb-6 uppercase text-xs tracking-widest border-b pb-4">Ranking de Analistas (NPS)</h3>
                                 <div id="analyst-ranking" class="space-y-4 overflow-y-auto flex-1 pr-2"></div>
                             </div>
                         </div>

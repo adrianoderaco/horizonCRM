@@ -23,19 +23,15 @@ export const agentAPI = {
     async getPendingTickets() {
         const { data, error } = await supabase
             .from('tickets')
-            .select(`id, protocol_number, channel, created_at, status, agent_id, customers (full_name, email), ticket_subjects (label)`)
-            .in('status', ['open', 'in_progress']) // <-- Alteração principal aqui
-            .order('created_at', { ascending: true }); // Ordena do mais antigo para o mais novo
+            .select(`id, protocol_number, channel, created_at, status, agent_id, last_sender, last_interaction_at, customers (full_name, email), ticket_subjects (label)`)
+            .in('status', ['open', 'in_progress'])
+            .order('created_at', { ascending: true });
         if (error) throw error;
         return data;
     },
 
     async getTicketDetails(ticketId) {
-        const { data, error } = await supabase
-            .from('tickets')
-            .select(`*, customers (*), ticket_subjects (label)`)
-            .eq('id', ticketId)
-            .single();
+        const { data, error } = await supabase.from('tickets').select(`*, customers (*), ticket_subjects (label)`).eq('id', ticketId).single();
         if (error) throw error;
         return data;
     },
@@ -45,27 +41,27 @@ export const agentAPI = {
         if (error) throw error;
     },
 
-    // --- NOVA FUNÇÃO DE TRANSFERÊNCIA ---
     async transferTicket(ticketId, newSubjectId, newAgentId, tag2Text) {
-        const updates = { tag2_detail: tag2Text };
-        
-        if (newAgentId) {
-            // Manda para um agente específico (volta o status para open para aparecer na fila dele)
-            updates.agent_id = newAgentId;
-            updates.status = 'open';
-        } else if (newSubjectId) {
-            // Manda para uma Fila/Assunto (limpa o agente para o orquestrador pegar)
-            updates.subject_id = newSubjectId;
-            updates.agent_id = null;
-            updates.status = 'open';
-        }
+        const updates = { tag2_detail: tag2Text, status: 'open', last_interaction_at: new Date() };
+        if (newAgentId) { updates.agent_id = newAgentId; } 
+        else if (newSubjectId) { updates.subject_id = newSubjectId; updates.agent_id = null; }
+        const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
+        if (error) throw error;
+    },
 
+    // NOVAS FUNÇÕES PARA GESTÃO DE AGENTES E DESLOGUE SEGURO
+    async releaseMyTickets(agentId) {
+        const { error } = await supabase.from('tickets').update({ agent_id: null, status: 'open' }).eq('agent_id', agentId).eq('status', 'in_progress');
+        if (error) throw error;
+    },
+
+    async reassignTicket(ticketId, newAgentId) {
+        const updates = newAgentId ? { agent_id: newAgentId, status: 'in_progress', last_interaction_at: new Date() } : { agent_id: null, status: 'open', last_interaction_at: new Date() };
         const { error } = await supabase.from('tickets').update(updates).eq('id', ticketId);
         if (error) throw error;
     },
 
     async getActiveAgents() {
-        // Busca todos os agentes aprovados para preencher o dropdown de transferência
         const { data, error } = await supabase.from('profiles').select('id, full_name').eq('is_approved', true).order('full_name');
         if (error) throw error;
         return data;
@@ -80,8 +76,30 @@ export const agentAPI = {
     async sendMessage(ticketId, content) {
         const { error } = await supabase.from('messages').insert([{ ticket_id: ticketId, sender_type: 'agent', content: content }]);
         if (error) throw error;
+        
+        // Atualiza a tabela de tickets para alterar a cor da bolha
+        await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date() }).eq('id', ticketId);
     },
 
+    // Histórico e Pedidos do CRM
+    async getCustomerHistory(customerId) {
+        const { data, error } = await supabase.from('tickets').select(`*, ticket_subjects(label)`).eq('customer_id', customerId).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async getCustomerOrders(customerId) {
+        const { data, error } = await supabase.from('orders').select('*').eq('customer_id', customerId).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async createOrder(orderData) {
+        const { error } = await supabase.from('orders').insert([orderData]);
+        if (error) throw error;
+    },
+
+    // Gestão da Equipe e Configurações
     async getTeamProfiles() {
         const { data, error } = await supabase.from('profiles').select('*, agent_skills(subject_id)').order('created_at', { ascending: true });
         if (error) throw error;
@@ -121,9 +139,7 @@ export const agentAPI = {
     subscribeToMessages(ticketId, onNewMessage) {
         return supabase.channel(`ticket-${ticketId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
-                if (payload.new.sender_type === 'customer') {
-                    onNewMessage(payload.new.content);
-                }
+                if (payload.new.sender_type === 'customer') { onNewMessage(payload.new.content); }
             }).subscribe();
     }
 };
