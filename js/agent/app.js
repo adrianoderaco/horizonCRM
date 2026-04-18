@@ -21,7 +21,6 @@ const App = {
     async init() {
         window.agentApp = this; 
         
-        // 1. Carrega as Configurações de SLA (Caso falhe, usa as nativas)
         try {
             this.systemSettings = await agentAPI.getSystemSettings();
         } catch (e) {
@@ -40,7 +39,6 @@ const App = {
             this.pickTicket(e.detail.id);
         });
 
-        // 2. Formulário de Login / Acesso
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login');
@@ -115,61 +113,52 @@ const App = {
             }
         });
 
-        // 3. Envio de Chat (Web)
-        const agentChatForm = document.getElementById('agent-chat-form');
-        if (agentChatForm) {
-            agentChatForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const input = document.getElementById('chat-input');
-                const text = input.value.trim();
-                if(!text || !this.activeTicketId) return;
-                
-                this.renderMsg(text, 'agent');
+        document.getElementById('agent-chat-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if(!text || !this.activeTicketId) return;
+            
+            this.renderMsg(text, 'agent');
+            input.value = '';
+            
+            try {
+                await agentAPI.sendMessage(this.activeTicketId, text);
+                this.updateLocalBubble();
+            } catch(err) {
+                alert("Erro ao enviar mensagem.");
+            }
+        });
+
+        document.getElementById('agent-email-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('email-input');
+            const text = input.value.trim();
+            if(!text || !this.activeTicketId) return;
+            
+            if(!confirm("Prosseguir com a resposta ao cliente?")) return;
+
+            const btn = document.getElementById('btn-send-email');
+            const origHTML = btn.innerHTML;
+            btn.innerHTML = `<span class="material-symbols-outlined animate-spin text-[18px]">refresh</span> Enviando...`;
+            btn.disabled = true;
+
+            try {
+                await agentAPI.sendMessage(this.activeTicketId, text);
                 input.value = '';
+                this.updateLocalBubble();
                 
-                try {
-                    await agentAPI.sendMessage(this.activeTicketId, text);
-                    this.updateLocalBubble();
-                } catch(err) {
-                    alert("Erro ao enviar mensagem.");
-                }
-            });
-        }
-
-        // 4. Envio de E-mail (Gestão de Resposta)
-        const agentEmailForm = document.getElementById('agent-email-form');
-        if (agentEmailForm) {
-            agentEmailForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const input = document.getElementById('email-input');
-                const text = input.value.trim();
-                if(!text || !this.activeTicketId) return;
+                const msgs = await agentAPI.getMessages(this.activeTicketId);
+                this.renderEmailThread(this.currentTicket, msgs);
                 
-                if(!confirm("Prosseguir com a resposta ao cliente?")) return;
+            } catch(err) {
+                alert("Erro ao responder o e-mail.");
+            } finally {
+                btn.innerHTML = origHTML;
+                btn.disabled = false;
+            }
+        });
 
-                const btn = document.getElementById('btn-send-email');
-                const origHTML = btn.innerHTML;
-                btn.innerHTML = `<span class="material-symbols-outlined animate-spin text-[18px]">refresh</span> Enviando...`;
-                btn.disabled = true;
-
-                try {
-                    await agentAPI.sendMessage(this.activeTicketId, text);
-                    input.value = '';
-                    this.updateLocalBubble();
-                    
-                    const msgs = await agentAPI.getMessages(this.activeTicketId);
-                    this.renderEmailThread(this.currentTicket, msgs);
-                    
-                } catch(err) {
-                    alert("Erro ao responder o e-mail.");
-                } finally {
-                    btn.innerHTML = origHTML;
-                    btn.disabled = false;
-                }
-            });
-        }
-
-        // 5. Controles Extras
         document.getElementById('toggle-upload')?.addEventListener('change', (e) => {
             this.toggleClientUpload(e.target.checked);
         });
@@ -177,15 +166,11 @@ const App = {
         this.setupAgentAttachment('btn-agent-attach', 'agent-file-input'); 
         this.setupAgentAttachment('btn-email-attach', 'email-file-input', true);
 
-        // 6. Atualização de Status
         document.getElementById('agent-status-select')?.addEventListener('change', (e) => {
             this.updateMyStatus(e.target.value);
         });
     },
 
-    // ==========================================
-    // CONTROLES DE ANEXO
-    // ==========================================
     setupAgentAttachment(btnId, inputId, isEmail = false) {
         const btn = document.getElementById(btnId);
         const input = document.getElementById(inputId);
@@ -237,7 +222,7 @@ const App = {
     },
 
     // ==========================================
-    // STATUS DO AGENTE (PAUSA / BACKOFFICE)
+    // STATUS DO AGENTE COM TRAVA DE ORQUESTRADOR
     // ==========================================
     async updateMyStatus(newStatus) {
         if (!this.currentUser) return;
@@ -245,33 +230,41 @@ const App = {
             await agentAPI.changeStatus(this.currentUser.id, newStatus);
             this.currentUser.status = newStatus;
             
+            const routingToggle = document.getElementById('toggle-routing');
+
             if (newStatus !== 'online') {
-                console.log(`[Status] Alterado para ${newStatus}. Soltando apenas os tickets do Agente ID: ${this.currentUser.id}`);
+                console.log(`[Status] ${newStatus.toUpperCase()} - Desligando Orquestrador e soltando fila.`);
                 
-                // Libera APENAS os tickets da fila pessoal deste agente
+                // 1. Libera tickets do agente
                 await agentAPI.releaseMyTickets(this.currentUser.id);
                 
-                // Desliga o Orquestrador Pessoal
-                await this.toggleRouting(false);
-                const routingToggle = document.getElementById('toggle-routing');
+                // 2. Força o Orquestrador a Desligar
+                await agentAPI.updateRoutingStatus(this.currentUser.id, false);
+                Orchestrator.setStatus(false);
                 if(routingToggle) routingToggle.checked = false;
                 
-                alert(`Status alterado para ${newStatus.toUpperCase()}. Seus atendimentos retornaram para a fila principal.`);
-                
+                // 3. Tira o analista da tela de chat
                 this.activeTicketId = null;
                 document.getElementById('menu-chat').classList.add('hidden-view');
                 this.navigate('queue');
-                this.loadQueue();
+                
+            } else {
+                console.log(`[Status] ONLINE - Ligando Orquestrador e reativando fila.`);
+                // Se ficou online, liga o orquestrador automaticamente
+                await agentAPI.updateRoutingStatus(this.currentUser.id, true);
+                Orchestrator.setStatus(true);
+                if(routingToggle) routingToggle.checked = true;
             }
+
+            // Recarrega a fila (que agora vai zerar a tela dele se estiver offline/pausa)
+            this.loadQueue();
+
         } catch (e) {
             console.error("Erro na mudança de status:", e);
             alert("Erro ao tentar atualizar o status.");
         }
     },
 
-    // ==========================================
-    // MARCA D'ÁGUA DE SEGURANÇA
-    // ==========================================
     applyWatermark(name) {
         const wm = document.createElement('div');
         wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none';
@@ -298,14 +291,10 @@ const App = {
         }
     },
 
-    // ==========================================
-    // CRONÔMETRO, FADING DE BOLHAS E MACROS (SLA)
-    // ==========================================
     startLiveTimers() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         
         this.timerInterval = setInterval(() => {
-            // Atualiza Tempo da Fila Principal
             document.querySelectorAll('.live-timer').forEach(el => {
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
                 const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0');
@@ -318,40 +307,33 @@ const App = {
                 }
             });
 
-            // Tratamento de Cores de SLA, Fading e Encerramento
             if (this.systemSettings && this.currentUser) {
                 const chatLimitSecs = this.systemSettings.chat_timeout_min * 60;
                 const emailLimitSecs = this.systemSettings.email_timeout_hr * 3600;
 
                 this.activeTickets.forEach(t => {
-                    // Ignora tickets que não são deste agente
                     if (t.agent_id !== this.currentUser.id) return;
 
                     const lastTime = new Date(t.last_interaction_at || t.created_at).getTime();
                     const diffSeconds = Math.floor((Date.now() - lastTime) / 1000);
                     
-                    // Tratamento Visual (Fading da Bolha)
                     const el = document.getElementById(`bubble-${t.id}`);
                     if (el) {
                         if (t.last_sender === 'customer') {
-                            el.style.backgroundColor = '#2563eb'; // Azul forte
+                            el.style.backgroundColor = '#2563eb'; 
                             el.style.color = '#ffffff';
                             el.classList.add('animate-pulse');
                         } else {
                             el.classList.remove('animate-pulse');
                             const diffMinutes = Math.floor(diffSeconds / 60);
-                            const maxFadingMins = t.channel === 'web' ? this.systemSettings.chat_timeout_min : 60; // E-mail esfria a cor devagar
+                            const maxFadingMins = t.channel === 'web' ? this.systemSettings.chat_timeout_min : 60; 
                             
-                            // Clareia de Opacidade 1.0 para 0.15 gradualmente
                             const opacity = Math.max(0.15, 1 - (diffMinutes / maxFadingMins));
                             el.style.backgroundColor = `rgba(37, 99, 235, ${opacity})`;
-                            
-                            // Ajusta a cor da letra para manter contraste
                             el.style.color = opacity < 0.4 ? '#1e3a8a' : '#ffffff';
                         }
                     }
 
-                    // Gatilho de Encerramento (Macro)
                     if (t.last_sender === 'agent' && !this.closingTickets.has(t.id)) {
                         const isWebClose = t.channel === 'web' && diffSeconds >= chatLimitSecs;
                         const isEmailClose = t.channel === 'email' && diffSeconds >= emailLimitSecs;
@@ -369,17 +351,13 @@ const App = {
     async executeAutoClose(ticket) {
         try {
             console.log(`[SLA] Encerrando ticket HZ-${ticket.protocol_number} por inatividade.`);
-            
-            // Compila a Macro customizada
             let msg = this.systemSettings.closure_macro;
             msg = msg.replace(/\[nome do cliente\]/g, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
-            // Dispara a mensagem e fecha
             await agentAPI.sendMessage(ticket.id, msg);
             await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente (SLA Inatividade)');
             
-            // Remove da view local
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
                 this.activeTicketId = null;
@@ -415,9 +393,6 @@ const App = {
         }).join('');
     },
 
-    // ==========================================
-    // NAVEGAÇÃO E AUTENTICAÇÃO
-    // ==========================================
     toggleAuthMode() {
         this.isRegisterMode = !this.isRegisterMode;
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
@@ -445,9 +420,6 @@ const App = {
         if (target === 'settings') this.loadSettingsUI();
     },
 
-    // ==========================================
-    // TELA DE CONFIGURAÇÕES (SLA E MACRO)
-    // ==========================================
     async loadSettingsUI() {
         try {
             const cfg = await agentAPI.getSystemSettings();
@@ -477,7 +449,7 @@ const App = {
                 closure_macro: document.getElementById('cfg-macro').value
             };
             await agentAPI.updateSystemSettings(payload);
-            this.systemSettings = payload; // Salva o estado em memória para rodar em tempo real
+            this.systemSettings = payload; 
             alert("Configurações atualizadas com sucesso!");
         } catch (e) {
             alert("Erro ao salvar as configurações.");
@@ -487,9 +459,15 @@ const App = {
     },
 
     // ==========================================
-    // ORQUESTRAÇÃO E FILA GERAL
+    // ORQUESTRAÇÃO PROTEGIDA POR STATUS
     // ==========================================
     async toggleRouting(isActive) {
+        if (isActive && this.currentUser.status !== 'online') {
+            alert("Você precisa estar ONLINE para ligar o Orquestrador.");
+            document.getElementById('toggle-routing').checked = false;
+            return;
+        }
+
         try {
             await agentAPI.updateRoutingStatus(this.currentUser.id, isActive);
             Orchestrator.setStatus(isActive); 
@@ -527,20 +505,27 @@ const App = {
         if (isGestor) {
             tickets = this.activeTickets;
         } else {
-            tickets = this.activeTickets.filter(t => {
-                if (t.agent_id === this.currentUser.id) return true;
-                if (t.status === 'open') {
-                    if (t.channel === 'web' && this.currentUser.can_web) return true;
-                    if (t.channel === 'email' && this.currentUser.can_email) return true;
-                }
-                return false;
-            });
+            // Se o agente NÃO estiver online, a fila dele fica 100% VAZIA
+            if (this.currentUser.status === 'online') {
+                tickets = this.activeTickets.filter(t => {
+                    if (t.agent_id === this.currentUser.id) return true;
+                    if (t.status === 'open') {
+                        if (t.channel === 'web' && this.currentUser.can_web) return true;
+                        if (t.channel === 'email' && this.currentUser.can_email) return true;
+                    }
+                    return false;
+                });
+            }
         }
 
         if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
         
         if (tickets.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket pendente.</td></tr>`;
+            let emptyMsg = "Nenhum ticket pendente.";
+            if (!isGestor && this.currentUser.status !== 'online') {
+                emptyMsg = `Você está <strong>${this.currentUser.status.toUpperCase()}</strong>.<br>Mude para ONLINE para receber chamados.`;
+            }
+            tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-400 font-medium">${emptyMsg}</td></tr>`;
             return;
         }
 
@@ -646,9 +631,6 @@ const App = {
         }
     },
 
-    // ==========================================
-    // TELAS DE ATENDIMENTO
-    // ==========================================
     async pickTicket(id) {
         try {
             this.activeTicketId = id;
@@ -675,7 +657,6 @@ const App = {
             this.renderBubbles(); 
             this.currentCustomer = t.customers; 
 
-            // CRM Panel
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido';
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail';
             document.getElementById('crm-tag1').innerText = t.ticket_subjects?.label || 'Sem assunto';
@@ -690,7 +671,6 @@ const App = {
             const msgs = await agentAPI.getMessages(id);
             if (this.messageSub) this.messageSub.unsubscribe();
 
-            // VISÃO DIVIDIDA (CHAT vs EMAIL)
             if (t.channel === 'email') {
                 document.getElementById('chat-mode-container').classList.add('hidden-view');
                 document.getElementById('email-mode-container').classList.remove('hidden-view');
@@ -944,12 +924,9 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // ==========================================
-    // DASHBOARD E RELATÓRIOS
-    // ==========================================
     async renderDashboard() {
         try {
-            const { data: tickets } = await supabase.from('tickets').select('status, rating, agent_id');
+            const { data: tickets } = await agentAPI.getPendingTickets(); // Dashboard simplification
             const { data: orders } = await supabase.from('orders').select('amount');
             const { data: profiles } = await supabase.from('profiles').select('id, full_name');
 
