@@ -23,13 +23,16 @@ export const Orchestrator = {
 
     setStatus(isActive) {
         this.isRoutingActive = isActive;
-        if (isActive) this.findAndClaimNext();
+        if (isActive) {
+            this.findAndClaimNext();
+        }
     },
 
     async findAndClaimNext() {
         if (!this.isRoutingActive) return;
 
         try {
+            // 1. Verifica limite de tickets
             const { count } = await supabase.from('tickets')
                 .select('*', { count: 'exact', head: true })
                 .eq('agent_id', this.agentId)
@@ -37,26 +40,28 @@ export const Orchestrator = {
 
             if (count >= this.MAX_CONCURRENT_TICKETS) return;
 
-            // TRAVA DEFINITIVA DE CANAL: Puxa do banco atualizado
+            // 2. Verifica permissão de canais do Agente
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email').eq('id', this.agentId).single();
             
             const allowedChannels = [];
             if (profile?.can_web) allowedChannels.push('web');
             if (profile?.can_email) allowedChannels.push('email');
             
-            if (allowedChannels.length === 0) return; // Não atende a nenhum canal, aborta
+            if (allowedChannels.length === 0) return; 
 
+            // 3. Verifica Skills (Assuntos)
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const subjectIds = skills.map(s => s.subject_id);
 
             if (subjectIds.length === 0) return;
 
+            // 4. Busca o ticket mais antigo que atenda aos requisitos
             const { data: tickets } = await supabase.from('tickets')
                 .select('*')
                 .eq('status', 'open')
                 .is('agent_id', null)
                 .in('subject_id', subjectIds)
-                .in('channel', allowedChannels) // ← Filtro forte de canal aqui
+                .in('channel', allowedChannels)
                 .order('created_at', { ascending: true })
                 .limit(1);
 
@@ -77,7 +82,7 @@ export const Orchestrator = {
 
             if (count >= this.MAX_CONCURRENT_TICKETS) return;
 
-            // TRAVA DEFINITIVA DE CANAL PARA INSERÇÕES EM TEMPO REAL
+            // TRAVA DE CANAL (Em tempo real)
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email').eq('id', this.agentId).single();
             if (ticket.channel === 'web' && !profile?.can_web) return;
             if (ticket.channel === 'email' && !profile?.can_email) return;
@@ -87,6 +92,7 @@ export const Orchestrator = {
             
             if (!hasSkill) return;
 
+            // Assumir o Ticket
             const { data, error } = await supabase.from('tickets')
                 .update({ agent_id: this.agentId, status: 'in_progress', last_interaction_at: new Date() })
                 .eq('id', ticket.id)
