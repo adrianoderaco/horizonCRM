@@ -4,10 +4,12 @@ export const Orchestrator = {
     agentId: null,
     isRoutingActive: false,
     isSystemActive: false,
+    systemSettings: null,
 
     async init(agentId, settings) {
         this.agentId = agentId;
-        this.isSystemActive = settings?.is_orchestrator_active || false;
+        this.systemSettings = settings || {};
+        this.isSystemActive = this.systemSettings.is_orchestrator_active || false;
         
         supabase.channel('orchestrator-realtime')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
@@ -32,6 +34,7 @@ export const Orchestrator = {
     },
 
     updateSettings(newSettings) {
+        this.systemSettings = newSettings;
         this.isSystemActive = newSettings.is_orchestrator_active || false;
     },
 
@@ -42,11 +45,13 @@ export const Orchestrator = {
             const { data: profile } = await supabase.from('profiles').select('can_web, can_email, status, max_chats, max_emails').eq('id', this.agentId).single();
             if (profile?.status !== 'online') return; 
 
+            // Conta quantos casos ESTÃO AGUARDANDO O ANALISTA RESPONDER
             const { data: myTickets } = await supabase.from('tickets')
                 .select('id, channel, last_sender')
                 .eq('agent_id', this.agentId)
                 .eq('status', 'in_progress');
 
+            // Só conta os que estão aguardando agente (last_sender != 'agent')
             const myWaitingChats = myTickets.filter(t => t.channel === 'web' && t.last_sender !== 'agent').length;
             const myWaitingEmails = myTickets.filter(t => t.channel === 'email' && t.last_sender !== 'agent').length;
 

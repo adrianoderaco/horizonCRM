@@ -183,7 +183,7 @@ const App = {
             try { 
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 this.updateLocalBubble();
-                Orchestrator.findAndClaimNext(); // Se virou bolha, libera espaço no orquestrador
+                Orchestrator.findAndClaimNext(); // Libera espaço no orquestrador
             } catch(err) { 
                 alert("Erro ao enviar mensagem."); 
             }
@@ -254,7 +254,7 @@ const App = {
             await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
         } catch (e) {
             document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador.");
+            alert("Erro ao alterar Orquestrador Global.");
         }
     },
 
@@ -285,7 +285,7 @@ const App = {
                         this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); 
                     }
                 } catch(err) { 
-                    alert("Erro no upload."); 
+                    alert("Erro no upload do arquivo."); 
                 } finally { 
                     btnSend.innerHTML = origText; 
                     btnSend.disabled = false; 
@@ -517,9 +517,6 @@ const App = {
         } catch(e) { console.error("Erro na tela de UI de configurações", e); }
     },
 
-    // ==========================================
-    // RENDERIZAÇÃO DAS TAGS (CONFIGURAÇÕES)
-    // ==========================================
     renderSettingsTags() {
         const container = document.getElementById('settings-tags-list');
         if (!container) return;
@@ -811,7 +808,7 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
-            // CARREGA TAGS (MOTIVOS) E SUBMOTIVOS
+            // TAGS: Preenche os dropdowns de Tag 1
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
@@ -937,7 +934,7 @@ const App = {
         const notes = document.getElementById('crm-notes').value.trim();
 
         if (!tag1 || !tag2 || !notes) {
-            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações.");
+            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações do Atendimento.");
             return;
         }
 

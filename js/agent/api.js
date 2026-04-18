@@ -179,9 +179,6 @@ export const agentAPI = {
         if (error) throw error;
     },
 
-    // ===================================
-    // FUNÇÕES DE TAGS (MOTIVOS E SUBMOTIVOS)
-    // ===================================
     async getAllSubjects() {
         const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
         if (error) throw error;
