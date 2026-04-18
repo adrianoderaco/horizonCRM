@@ -23,9 +23,9 @@ export const agentAPI = {
     async getPendingTickets() {
         const { data, error } = await supabase
             .from('tickets')
-            .select(`id, protocol_number, channel, created_at, customers (full_name, email), ticket_subjects (label)`)
-            .eq('status', 'open')
-            .order('created_at', { ascending: false });
+            .select(`id, protocol_number, channel, created_at, status, agent_id, customers (full_name, email), ticket_subjects (label)`)
+            .in('status', ['open', 'in_progress']) // <-- Alteração principal aqui
+            .order('created_at', { ascending: true }); // Ordena do mais antigo para o mais novo
         if (error) throw error;
         return data;
     },

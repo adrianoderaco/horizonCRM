@@ -11,9 +11,13 @@ const App = {
     currentCustomer: null,
     allSubjects: [],
     activeAgents: [],
+    timerInterval: null,
 
     init() {
         window.agentApp = this; 
+        
+        // Inicia o motor do cronômetro ao vivo da Fila
+        this.startLiveTimers();
 
         window.addEventListener('ticket-assigned', (e) => {
             this.pickTicket(e.detail.id); 
@@ -57,7 +61,7 @@ const App = {
                 this.allSubjects = await agentAPI.getAllSubjects();
                 this.activeAgents = await agentAPI.getActiveAgents();
                 
-                // EXIBE MENUS DE GESTOR (INCLUINDO DASHBOARD)
+                // LIBERA MENUS SE FOR GESTOR
                 if (profile.role === 'gestor') {
                     document.getElementById('menu-team').classList.remove('hidden-view');
                     document.getElementById('menu-dashboard').classList.remove('hidden-view');
@@ -68,7 +72,13 @@ const App = {
                 Orchestrator.init(profile.id, profile.is_routing_active);
 
                 this.loadQueue();
-                agentAPI.subscribeToQueue(() => this.loadQueue());
+                agentAPI.subscribeToQueue(() => {
+                    this.loadQueue();
+                    // Atualiza o dashboard se a aba estiver aberta
+                    if (!document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
+                        this.renderDashboard();
+                    }
+                });
 
             } catch (error) { 
                 alert("Erro no login."); 
@@ -87,6 +97,29 @@ const App = {
         });
     },
 
+    // --- MOTOR DE TEMPO REAL (CRONÔMETRO DA FILA) ---
+    startLiveTimers() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        this.timerInterval = setInterval(() => {
+            document.querySelectorAll('.live-timer').forEach(el => {
+                const startTime = new Date(el.dataset.time).getTime();
+                const diffSeconds = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+                
+                const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0');
+                const m = String(Math.floor((diffSeconds % 3600) / 60)).padStart(2, '0');
+                const s = String(diffSeconds % 60).padStart(2, '0');
+                
+                el.innerText = `${h}:${m}:${s}`;
+                
+                // Se passou de 10 minutos (600s), fica vermelho pra alertar o gestor
+                if (diffSeconds > 600) {
+                    el.classList.remove('text-slate-600');
+                    el.classList.add('text-red-600');
+                }
+            });
+        }, 1000);
+    },
+
     toggleAuthMode() {
         this.isRegisterMode = !this.isRegisterMode;
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
@@ -97,9 +130,11 @@ const App = {
     },
 
     navigate(target) {
-        ['queue', 'chat', 'team'].forEach(s => document.getElementById(`sec-${s}`)?.classList.add('hidden-view'));
+        ['queue', 'chat', 'team', 'dashboard'].forEach(s => document.getElementById(`sec-${s}`)?.classList.add('hidden-view'));
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
-        if(target === 'team') this.loadTeam();
+        
+        if (target === 'team') this.loadTeam();
+        if (target === 'dashboard') this.renderDashboard();
     },
 
     async toggleRouting(isActive) {
@@ -110,32 +145,126 @@ const App = {
     },
 
     async loadQueue() {
-        const tickets = await agentAPI.getPendingTickets();
+        const allTickets = await agentAPI.getPendingTickets();
         const tbody = document.getElementById('queue-tbody');
         const countEl = document.getElementById('queue-count');
-        if(countEl) countEl.innerText = `${tickets.length} tickets`;
+        const isGestor = this.currentUser.role === 'gestor';
+
+        // Filtra: Gestor vê tudo. Analista vê os abertos e os que estão em curso com ele mesmo.
+        const tickets = isGestor 
+            ? allTickets 
+            : allTickets.filter(t => t.status === 'open' || t.agent_id === this.currentUser.id);
+
+        if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
+        
         if (tickets.length === 0) {
             tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket pendente.</td></tr>`;
             return;
         }
-        tbody.innerHTML = tickets.map(t => `
+
+        tbody.innerHTML = tickets.map(t => {
+            const inProg = t.status === 'in_progress';
+            const isMine = t.agent_id === this.currentUser.id;
+
+            // Monta as Tags de Status com o Cronômetro
+            const statusHtml = `
+                <div class="flex flex-col gap-1 items-start">
+                    ${inProg 
+                        ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` 
+                        : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`
+                    }
+                    <span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span>
+                </div>
+            `;
+
+            // Lógica do botão de Ação
+            let actionBtn = '';
+            if (inProg && !isMine && isGestor) {
+                // Gestor vendo ticket de outro analista (futuramente pode ter função de "Espiar")
+                actionBtn = `<button disabled class="bg-slate-100 text-slate-400 border px-5 py-2.5 rounded-xl text-xs font-black cursor-not-allowed">Em Curso</button>`;
+            } else {
+                actionBtn = `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">${inProg && isMine ? 'Retomar Chat' : 'Atender'}</button>`;
+            }
+
+            return `
             <tr class="hover:bg-slate-50 transition-colors">
                 <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} <span class="text-[10px] bg-slate-200 px-2 py-0.5 rounded ml-2">${t.channel}</span></td>
-                <td class="p-5 font-black text-slate-900">${t.customers.full_name}</td>
-                <td class="p-5 font-bold text-sm text-slate-600">${t.ticket_subjects?.label || '---'}</td>
-                <td class="p-5 text-right"><button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-xs font-black hover:bg-blue-600 transition-all">Atender</button></td>
-            </tr>`).join('');
+                <td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span></td>
+                <td class="p-5">${statusHtml}</td>
+                <td class="p-5 text-right">${actionBtn}</td>
+            </tr>`;
+        }).join('');
     },
 
+    // --- NOVA LÓGICA DO DASHBOARD INTEGRADO ---
+    async renderDashboard() {
+        try {
+            const { data: tickets } = await supabase.from('tickets').select('status, rating, agent_id');
+            const { data: orders } = await supabase.from('orders').select('amount');
+            const { data: profiles } = await supabase.from('profiles').select('id, full_name');
+
+            const total = tickets.length;
+            const open = tickets.filter(t => t.status === 'open').length;
+            const inProgress = tickets.filter(t => t.status === 'in_progress').length;
+            const closed = tickets.filter(t => t.status === 'closed').length;
+            
+            const npsTickets = tickets.filter(t => t.rating !== null);
+            const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0";
+            const totalSales = orders.reduce((acc, o) => acc + parseFloat(o.amount), 0);
+
+            document.getElementById('stat-total').innerText = total;
+            document.getElementById('stat-open').innerText = open;
+            document.getElementById('stat-nps').innerText = avgNps;
+            document.getElementById('stat-sales').innerText = `R$ ${totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+            this.updateStatusChart(open, inProgress, closed);
+            this.updateAnalystRanking(tickets, profiles);
+        } catch (error) { console.error("Erro Dashboard:", error); }
+    },
+
+    updateStatusChart(open, inProgress, closed) {
+        const ctx = document.getElementById('chartStatus').getContext('2d');
+        if (window.myChart) window.myChart.destroy();
+        window.myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Aguardando (Aberto)', 'Em Atendimento', 'Finalizados'],
+                datasets: [{ data: [open, inProgress, closed], backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'], borderWidth: 0, hoverOffset: 4 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } } }
+        });
+    },
+
+    updateAnalystRanking(tickets, profiles) {
+        const container = document.getElementById('analyst-ranking');
+        const ranking = profiles.map(p => {
+            const agentTickets = tickets.filter(t => t.agent_id === p.id && t.rating !== null);
+            const avg = agentTickets.length > 0 ? (agentTickets.reduce((acc, t) => acc + t.rating, 0) / agentTickets.length).toFixed(1) : 0;
+            return { name: p.full_name, avg: parseFloat(avg) };
+        }).sort((a, b) => b.avg - a.avg);
+
+        if (ranking.length === 0) { container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">S/ Dados.</div>`; return; }
+
+        container.innerHTML = ranking.map((r, index) => {
+            const badgeColor = index === 0 ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200';
+            return `
+            <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-slate-100">
+                <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div><span class="font-bold text-slate-700">${r.name}</span></div>
+                <span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg > 0 ? 'text-blue-600' : 'text-slate-400'} shadow-sm">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span>
+            </div>`;
+        }).join('');
+    },
+
+    // --- MANUTENÇÃO DAS DEMAIS FUNÇÕES DO CRM ---
     async pickTicket(id) {
         this.activeTicketId = id;
         this.navigate('chat');
         document.getElementById('menu-chat').classList.remove('hidden-view');
         document.getElementById('chat-history').innerHTML = '';
-        this.switchTab('crm-info'); // Força abrir na aba de dados
+        this.switchTab('crm-info');
 
         const t = await agentAPI.getTicketDetails(id);
-        this.currentCustomer = t.customers; // Armazena cliente atual para usar nos pedidos
+        this.currentCustomer = t.customers; 
         
         document.getElementById('chat-header-name').innerText = t.customers.full_name;
         document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`;
@@ -165,7 +294,6 @@ const App = {
         area.scrollTop = area.scrollHeight;
     },
 
-    // --- FUNÇÕES DA BARRA LATERAL CRM ---
     switchTab(tabId) {
         ['info', 'history', 'orders'].forEach(t => {
             document.getElementById(`view-crm-${t}`).classList.add('hidden-view');
@@ -182,9 +310,7 @@ const App = {
 
         const agSelect = document.getElementById('transfer-agent');
         agSelect.innerHTML = '<option value="">➜ Para Agente...</option>';
-        this.activeAgents.forEach(a => {
-            if (a.id !== this.currentUser.id) agSelect.innerHTML += `<option value="${a.id}">${a.full_name}</option>`;
-        });
+        this.activeAgents.forEach(a => { if (a.id !== this.currentUser.id) agSelect.innerHTML += `<option value="${a.id}">${a.full_name}</option>`; });
     },
 
     async transferTicket() {
@@ -210,11 +336,7 @@ const App = {
             
             container.innerHTML = hist.map(h => `
                 <div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300">
-                    <div>
-                        <div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div>
-                        <div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'S/ Assunto'}</div>
-                        <div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div>
-                    </div>
+                    <div><div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div><div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'S/ Assunto'}</div><div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div>
                     <button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button>
                 </div>
             `).join('');
@@ -247,14 +369,8 @@ const App = {
         const amount = document.getElementById('order-amount').value;
         if(!product || !amount) return alert("Preencha Produto e Valor.");
         try {
-            await agentAPI.createOrder({
-                customer_id: this.currentCustomer.id,
-                product_name: product,
-                quantity: parseInt(qty),
-                amount: parseFloat(amount.replace(',', '.'))
-            });
-            document.getElementById('order-product').value = '';
-            document.getElementById('order-amount').value = '';
+            await agentAPI.createOrder({ customer_id: this.currentCustomer.id, product_name: product, quantity: parseInt(qty), amount: parseFloat(amount.replace(',', '.')) });
+            document.getElementById('order-product').value = ''; document.getElementById('order-amount').value = '';
             document.getElementById('order-form').classList.add('hidden-view');
             this.loadCustomerOrders(this.currentCustomer.id);
         } catch (e) { alert("Erro ao salvar pedido."); }
@@ -268,10 +384,7 @@ const App = {
             
             container.innerHTML = orders.map(o => `
                 <div class="p-3 bg-white border border-dashed border-slate-300 rounded-xl flex justify-between items-center hover:bg-slate-50 transition-colors">
-                    <div>
-                        <div class="text-xs font-black text-slate-800">${o.product_name}</div>
-                        <div class="text-[10px] font-bold text-slate-500">${o.quantity} un • R$ ${o.amount.toFixed(2).replace('.', ',')}</div>
-                    </div>
+                    <div><div class="text-xs font-black text-slate-800">${o.product_name}</div><div class="text-[10px] font-bold text-slate-500">${o.quantity} un • R$ ${o.amount.toFixed(2).replace('.', ',')}</div></div>
                     <div class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">${new Date(o.created_at).toLocaleDateString()}</div>
                 </div>
             `).join('');
@@ -306,14 +419,8 @@ const App = {
         }).join('');
     },
 
-    async approveMember(id) {
-        if(confirm("Aprovar?")) { await agentAPI.approveUser(id, 'analista'); this.loadTeam(); }
-    },
-
-    async toggleSkill(agentId, subjectId, isAdding) {
-        try { await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); } 
-        catch (e) { this.loadTeam(); }
-    }
+    async approveMember(id) { if(confirm("Aprovar?")) { await agentAPI.approveUser(id, 'analista'); this.loadTeam(); } },
+    async toggleSkill(agentId, subjectId, isAdding) { try { await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); } catch (e) { this.loadTeam(); } }
 };
 
 App.init();
