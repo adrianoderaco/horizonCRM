@@ -17,7 +17,7 @@ const App = {
 
     init() {
         window.agentApp = this; 
-        this.startLiveTimers(); // Inicia o motor de tempo
+        this.startLiveTimers();
 
         window.addEventListener('ticket-assigned', (e) => this.pickTicket(e.detail.id));
 
@@ -58,10 +58,8 @@ const App = {
                 this.allSubjects = await agentAPI.getAllSubjects();
                 this.activeAgents = await agentAPI.getActiveAgents();
                 
-                // Injeta o menu lateral componentizado
                 Sidebar.render('sidebar-root', profile.role);
                 
-                // Exibe orquestrador apenas se for gestor
                 if (profile.role === 'gestor') {
                     document.getElementById('wrapper-routing').classList.remove('hidden-view');
                 }
@@ -72,7 +70,6 @@ const App = {
                 this.loadQueue();
                 agentAPI.subscribeToQueue(() => {
                     this.loadQueue();
-                    // Atualiza o dashboard em tempo real se a aba estiver aberta
                     if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
                         this.renderDashboard();
                     }
@@ -95,7 +92,6 @@ const App = {
         });
     },
 
-    // --- FUNÇÕES DE LOGOUT E TEMPORIZADORES (SLAs) ---
     async logout() {
         if(confirm("Deseja sair? Seus atendimentos em andamento voltarão automaticamente para a fila!")) {
             try {
@@ -109,7 +105,6 @@ const App = {
     startLiveTimers() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         this.timerInterval = setInterval(() => {
-            // Atualiza cronômetro da Fila
             document.querySelectorAll('.live-timer').forEach(el => {
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
                 const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0');
@@ -119,7 +114,6 @@ const App = {
                 if (diffSeconds > 600) { el.classList.remove('text-slate-600'); el.classList.add('text-red-600'); }
             });
 
-            // Atualiza Cores das Bolhas
             document.querySelectorAll('.chat-bubble').forEach(el => {
                 const lastSender = el.dataset.sender;
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
@@ -127,11 +121,11 @@ const App = {
                 el.classList.remove('bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-red-500', 'animate-pulse');
 
                 if (lastSender === 'customer') {
-                    el.classList.add('bg-blue-500', 'animate-pulse'); // Cliente respondeu
+                    el.classList.add('bg-blue-500', 'animate-pulse');
                 } else {
-                    if (diffSeconds < 300) el.classList.add('bg-green-500');      // Agente respondeu faz < 5 min
-                    else if (diffSeconds < 600) el.classList.add('bg-orange-500'); // Agente respondeu faz > 5 min
-                    else el.classList.add('bg-red-500');                           // Agente respondeu faz > 10 min
+                    if (diffSeconds < 300) el.classList.add('bg-green-500');      
+                    else if (diffSeconds < 600) el.classList.add('bg-orange-500'); 
+                    else el.classList.add('bg-red-500');                           
                 }
             });
         }, 1000);
@@ -141,7 +135,6 @@ const App = {
         const container = document.getElementById('bubble-container');
         if(!container) return;
         
-        // Pega os tickets em andamento Deste Agente
         const myTickets = this.activeTickets.filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id);
         
         container.innerHTML = myTickets.map(t => `
@@ -155,7 +148,6 @@ const App = {
         `).join('');
     },
 
-    // --- GESTÃO DE NAVEGAÇÃO E AUTENTICAÇÃO ---
     toggleAuthMode() {
         this.isRegisterMode = !this.isRegisterMode;
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
@@ -179,16 +171,14 @@ const App = {
         } catch(e) { document.getElementById('toggle-routing').checked = !isActive; }
     },
 
-    // --- MONITOR DA FILA ---
     async loadQueue() {
         this.activeTickets = await agentAPI.getPendingTickets();
         const tbody = document.getElementById('queue-tbody');
         const countEl = document.getElementById('queue-count');
         const isGestor = this.currentUser.role === 'gestor';
 
-        this.renderBubbles(); // Recarrega bolhas de multiatendimento
+        this.renderBubbles();
 
-        // Aplica filtro de visualização da fila
         const tickets = isGestor ? this.activeTickets : this.activeTickets.filter(t => t.status === 'open' || t.agent_id === this.currentUser.id);
 
         if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
@@ -235,16 +225,30 @@ const App = {
         } else { this.loadQueue(); }
     },
 
-    // --- ATENDIMENTO E CHAT ---
     async pickTicket(id) {
         this.activeTicketId = id;
         this.navigate('chat');
         document.getElementById('menu-chat').classList.remove('hidden-view');
         document.getElementById('chat-history').innerHTML = '';
         this.switchTab('crm-info');
-        this.renderBubbles(); // Atualiza a borda da bolha selecionada
+        this.renderBubbles();
 
-        const t = await agentAPI.getTicketDetails(id);
+        let t = await agentAPI.getTicketDetails(id);
+        
+        // CORREÇÃO: Se o ticket foi clicado manualmente e está aberto, assume a propriedade!
+        if (t.status === 'open' || !t.agent_id) {
+            // Conta os tickets atuais para travar a captura manual
+            const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
+            if (myCount >= 10) {
+                alert("Você atingiu o limite de 10 atendimentos simultâneos!");
+                this.navigate('queue');
+                return;
+            }
+            await agentAPI.reassignTicket(id, this.currentUser.id);
+            t.status = 'in_progress';
+            t.agent_id = this.currentUser.id;
+        }
+
         this.currentCustomer = t.customers; 
         
         document.getElementById('chat-header-name').innerText = t.customers.full_name;
@@ -286,7 +290,6 @@ const App = {
         } catch (error) { alert("Erro ao fechar."); }
     },
 
-    // --- CRM E ABAS LATERAIS ---
     switchTab(tabId) {
         ['info', 'history', 'orders'].forEach(t => {
             document.getElementById(`view-crm-${t}`).classList.add('hidden-view');
@@ -384,7 +387,6 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // --- DASHBOARD GESTOR ---
     async renderDashboard() {
         try {
             const { data: tickets } = await supabase.from('tickets').select('status, rating, agent_id');
@@ -440,7 +442,6 @@ const App = {
         }).join('');
     },
 
-    // --- GESTÃO DE EQUIPE ---
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles();
         const tbody = document.getElementById('team-tbody');

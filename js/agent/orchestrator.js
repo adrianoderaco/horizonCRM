@@ -4,14 +4,15 @@ import { supabase } from '../supabase.js';
 export const Orchestrator = {
     agentId: null,
     isRoutingActive: false,
+    MAX_CONCURRENT_TICKETS: 10, // Limite máximo de atendimentos simultâneos
 
     async init(agentId, initialStatus) {
         this.agentId = agentId;
         this.isRoutingActive = initialStatus;
         
-        console.log("🧠 Orquestrador Automático Iniciado.");
+        console.log("🧠 Orquestrador Automático Iniciado. Limite:", this.MAX_CONCURRENT_TICKETS);
 
-        // 1. Monitoramento em tempo real para novos tickets que entrarem AGORA
+        // Monitoramento em tempo real
         supabase.channel('orchestrator-realtime')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tickets', filter: "status=eq.open" }, async (payload) => {
                 if (this.isRoutingActive) {
@@ -19,7 +20,7 @@ export const Orchestrator = {
                 }
             }).subscribe();
 
-        // 2. Busca proativa: Verifica se já existem tickets na fila ao iniciar ou mudar status
+        // Busca proativa inicial
         if (this.isRoutingActive) {
             await this.findAndClaimNext();
         }
@@ -30,18 +31,28 @@ export const Orchestrator = {
         if (isActive) this.findAndClaimNext();
     },
 
-    // Busca o ticket mais antigo da fila que combine com as skills do agente
     async findAndClaimNext() {
         if (!this.isRoutingActive) return;
 
         try {
+            // TRAVA 1: Verifica quantos tickets o agente já tem em andamento
+            const { count } = await supabase.from('tickets')
+                .select('*', { count: 'exact', head: true })
+                .eq('agent_id', this.agentId)
+                .eq('status', 'in_progress');
+
+            if (count >= this.MAX_CONCURRENT_TICKETS) {
+                console.log(`⚠️ Orquestrador pausado: Limite de ${this.MAX_CONCURRENT_TICKETS} tickets atingido.`);
+                return; // Aborta a captura
+            }
+
             // Pega as skills do agente
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const subjectIds = skills.map(s => s.subject_id);
 
             if (subjectIds.length === 0) return;
 
-            // Busca o ticket mais antigo (created_at ascendente) que esteja aberto e sem agente
+            // Busca o ticket mais antigo
             const { data: tickets } = await supabase.from('tickets')
                 .select('*')
                 .eq('status', 'open')
@@ -60,6 +71,14 @@ export const Orchestrator = {
 
     async evaluateAndClaim(ticket) {
         try {
+            // TRAVA 2: Verifica limite antes de capturar um ticket recém-chegado
+            const { count } = await supabase.from('tickets')
+                .select('*', { count: 'exact', head: true })
+                .eq('agent_id', this.agentId)
+                .eq('status', 'in_progress');
+
+            if (count >= this.MAX_CONCURRENT_TICKETS) return;
+
             const { data: skills } = await supabase.from('agent_skills').select('subject_id').eq('agent_id', this.agentId);
             const hasSkill = skills.some(s => s.subject_id === ticket.subject_id);
             
@@ -67,7 +86,7 @@ export const Orchestrator = {
 
             // Tenta capturar o ticket
             const { data, error } = await supabase.from('tickets')
-                .update({ agent_id: this.agentId, status: 'in_progress' })
+                .update({ agent_id: this.agentId, status: 'in_progress', last_interaction_at: new Date() })
                 .eq('id', ticket.id)
                 .is('agent_id', null)
                 .select();
