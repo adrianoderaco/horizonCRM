@@ -26,13 +26,9 @@
             </div>
             <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
         </div>
-        
         <div class="w-full lg:w-2/5 flex items-center justify-center p-8 bg-white z-10 shadow-2xl overflow-y-auto">
             <div class="w-full max-w-md space-y-8">
-                <header>
-                    <h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3>
-                    <p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais.</p>
-                </header>
+                <header><h3 class="text-3xl font-extrabold text-slate-900 mb-2" id="auth-title">Acesso Restrito</h3><p class="text-slate-500 font-medium" id="auth-desc">Insira suas credenciais.</p></header>
                 <form id="login-form" class="space-y-6">
                     <div class="space-y-4">
                         <input type="text" id="reg-name" class="hidden-view w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" placeholder="Nome Completo" />
@@ -60,7 +56,7 @@
                     
                     <div id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200" title="Orquestrador Global">
                         <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
-                        <input type="checkbox" id="toggle-routing" onchange="agentApp.toggleGlobalOrchestrator(this.checked)" class="sr-only peer">
+                        <input type="checkbox" id="toggle-routing" class="sr-only peer">
                         <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 relative"></div>
                     </div>
                     
@@ -98,7 +94,7 @@
                         <h2 class="text-3xl font-black text-slate-900 mb-6">Gestão de Equipe & Skills</h2>
                         <div class="bg-white rounded-3xl border shadow-sm overflow-hidden">
                             <table class="w-full text-left">
-                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5 w-1/4">Analista</th><th class="p-5 w-1/4">Status e Ponto (Hoje)</th><th class="p-5 w-2/4">Canais, Limites e Skills</th><th class="p-5 text-right w-32">Ações</th></tr></thead>
+                                <thead class="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="p-5 w-1/4">Analista</th><th class="p-5 w-1/4">Status e Ponto (Hoje)</th><th class="p-5 w-2/4">Canais e Skills</th><th class="p-5 text-right w-32">Ações</th></tr></thead>
                                 <tbody class="divide-y" id="team-tbody"></tbody>
                             </table>
                         </div>
@@ -118,27 +114,44 @@
                         <h2 class="text-3xl font-black text-slate-900">Configurações do Sistema</h2>
                         <div class="bg-white p-8 rounded-3xl border shadow-sm space-y-6">
                             
-                            <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">timer</span> Encerramento Automático (SLA Inatividade)</h3>
+                            <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-blue-600">timer</span> Encerramento Automático (SLA Inatividade)
+                            </h3>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div><label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite CHAT (Minutos)</label><input type="number" id="cfg-chat-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1"></div>
-                                <div><label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite E-MAIL (Horas)</label><input type="number" id="cfg-email-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1"></div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite CHAT (Minutos)</label>
+                                    <input type="number" id="cfg-chat-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-2">Tempo Limite E-MAIL (Horas)</label>
+                                    <input type="number" id="cfg-email-time" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium" min="1">
+                                </div>
                             </div>
                             
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem (Macro) de Encerramento Automático</label>
-                                <div class="flex gap-2 mb-3"><button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button><button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button></div>
+                                <div class="flex gap-2 mb-3">
+                                    <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
+                                    <button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
+                                </div>
                                 <textarea id="cfg-macro" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium resize-y h-48 leading-relaxed"></textarea>
                             </div>
                             
-                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8"><span class="material-symbols-outlined">save</span> Salvar Configurações Gerais</button>
-                            
-                            <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2 mt-12"><span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Classificação)</h3>
-                            <div class="flex gap-2 mb-4">
-                                <input type="text" id="new-tag1-input" class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium text-sm" placeholder="Novo Motivo Principal (Ex: Financeiro)">
-                                <button onclick="agentApp.addTag1()" class="bg-slate-800 text-white px-6 rounded-xl font-bold hover:bg-slate-900 transition-colors">Adicionar</button>
-                            </div>
-                            <div id="settings-tags-list" class="space-y-4"></div>
+                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2">
+                                <span class="material-symbols-outlined">save</span> Salvar Configurações Gerais
+                            </button>
 
+                            <div class="border-t pt-8 mt-8">
+                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)
+                                </h3>
+                                <div class="flex gap-2 mb-6">
+                                    <input type="text" id="new-tag1-input" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium text-sm" placeholder="Novo Motivo Principal (Ex: Financeiro, Dúvidas...)">
+                                    <button onclick="agentApp.addTag1()" class="bg-slate-800 text-white px-8 rounded-xl font-bold hover:bg-slate-900 transition-colors shadow-md">Adicionar Motivo</button>
+                                </div>
+                                <div id="settings-tags-list" class="space-y-4"></div>
+                            </div>
+                            
                         </div>
                     </div>
                 </section>
