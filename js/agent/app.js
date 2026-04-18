@@ -26,7 +26,12 @@ const App = {
             this.systemSettings = await agentAPI.getSystemSettings();
         } catch (e) {
             console.warn("Aviso: Configurações ausentes. Usando locais.");
-            this.systemSettings = { is_orchestrator_active: false, chat_timeout_min: 10, email_timeout_hr: 24, closure_macro: "Encerrado." };
+            this.systemSettings = { 
+                is_orchestrator_active: false, 
+                chat_timeout_min: 10, 
+                email_timeout_hr: 24, 
+                closure_macro: "Olá!\n\nFicamos aguardando seu retorno e não tivemos sucesso. Atendimento encerrado.\n\nProtocolo: [protocolo]" 
+            };
         }
 
         this.startLiveTimers(); 
@@ -48,7 +53,7 @@ const App = {
             if (this.isRegisterMode) {
                 try { 
                     await agentAPI.register(document.getElementById('reg-name').value, email, pass); 
-                    alert("Aguarde aprovação."); 
+                    alert("Aguarde aprovação do gestor."); 
                     this.toggleAuthMode(); 
                 } catch (err) { 
                     alert("Erro: " + err.message); 
@@ -149,14 +154,12 @@ const App = {
                     }
                 });
 
-                // ATUALIZADO: Escuta Chat Interno e prepara o botão com o nome do remetente
                 agentAPI.subscribeToInternalMessages(this.currentUser.id, async (msg) => {
                     if (document.getElementById('modal-internal-chat').classList.contains('hidden-view') || this.internalChatTarget !== msg.sender_id) {
                         const alertBtn = document.getElementById('btn-internal-alert');
                         if (alertBtn) {
                             alertBtn.classList.remove('hidden-view');
                             try {
-                                // Busca quem mandou a mensagem para abrir a janela certa
                                 const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).single();
                                 alertBtn.onclick = () => agentApp.openInternalChat(msg.sender_id, sender?.full_name || 'Equipe');
                             } catch(e) { console.error(e); }
@@ -185,7 +188,7 @@ const App = {
                 await agentAPI.sendMessage(this.activeTicketId, text); 
                 this.updateLocalBubble(); 
             } catch(err) { 
-                alert("Erro ao enviar."); 
+                alert("Erro ao enviar mensagem."); 
             }
         });
 
@@ -195,7 +198,7 @@ const App = {
             const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
             
-            if(!confirm("Prosseguir com a resposta ao cliente? O atendimento sairá da sua tela.")) return;
+            if(!confirm("Prosseguir com a resposta ao cliente? O atendimento sairá da sua tela e retornará à fila em caso de resposta do cliente.")) return;
             
             const btn = document.getElementById('btn-send-email'); 
             const origHTML = btn.innerHTML;
@@ -284,7 +287,7 @@ const App = {
                         this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); 
                     }
                 } catch(err) { 
-                    alert("Erro no upload."); 
+                    alert("Erro no upload do arquivo."); 
                 } finally { 
                     btnSend.innerHTML = origText; 
                     btnSend.disabled = false; 
@@ -323,7 +326,7 @@ const App = {
                 this.loadQueue();
             }
         } catch (e) { 
-            alert("Erro ao mudar status."); 
+            alert("Erro ao mudar o status."); 
         }
     },
 
@@ -331,7 +334,9 @@ const App = {
         if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
         try {
             await agentAPI.changeStatus(agentId, newStatus);
-            if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId);
+            if (newStatus !== 'online') {
+                await agentAPI.releaseMyTickets(agentId);
+            }
             this.loadTeam();
         } catch(e) { 
             alert("Erro ao alterar status do agente."); 
@@ -343,7 +348,9 @@ const App = {
         wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none';
         wm.style.zIndex = '99999'; 
         let spans = '';
-        for(let i=0; i<150; i++) spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
+        for(let i=0; i<150; i++) {
+            spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
+        }
         wm.innerHTML = spans; 
         document.body.appendChild(wm);
     },
@@ -363,13 +370,16 @@ const App = {
 
     startLiveTimers() {
         if (this.timerInterval) clearInterval(this.timerInterval);
+        
         this.timerInterval = setInterval(() => {
             document.querySelectorAll('.live-timer').forEach(el => {
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
                 const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0'); 
                 const m = String(Math.floor((diffSeconds % 3600) / 60)).padStart(2, '0'); 
                 const s = String(diffSeconds % 60).padStart(2, '0');
+                
                 el.innerText = `${h}:${m}:${s}`;
+                
                 if (diffSeconds > 600) { 
                     el.classList.remove('text-slate-600'); 
                     el.classList.add('text-red-600'); 
@@ -396,6 +406,7 @@ const App = {
                             el.classList.remove('animate-pulse');
                             const diffMinutes = Math.floor(diffSeconds / 60);
                             const maxFadingMins = t.channel === 'web' ? this.systemSettings.chat_timeout_min : 60; 
+                            
                             const opacity = Math.max(0.15, 1 - (diffMinutes / maxFadingMins));
                             el.style.backgroundColor = `rgba(37, 99, 235, ${opacity})`;
                             el.style.color = opacity < 0.4 ? '#1e3a8a' : '#ffffff';
@@ -423,7 +434,7 @@ const App = {
             msg = msg.replace(/\[protocolo\]/g, ticket.protocol_number);
 
             await agentAPI.sendMessage(ticket.id, msg);
-            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente (SLA Inatividade)');
+            await agentAPI.closeTicket(ticket.id, 'Encerrado Automaticamente (SLA de Inatividade)');
             
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             if (this.activeTicketId === ticket.id) {
@@ -433,7 +444,7 @@ const App = {
             }
             this.loadQueue();
         } catch(e) { 
-            console.error("Falha macro:", e); 
+            console.error("Falha na macro:", e); 
         } finally { 
             this.closingTickets.delete(ticket.id); 
         }
@@ -442,11 +453,21 @@ const App = {
     renderBubbles() {
         const container = document.getElementById('bubble-container'); 
         if(!container) return;
-        const myTickets = this.activeTickets.filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id).sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
+        
+        const myTickets = this.activeTickets
+            .filter(t => t.status === 'in_progress' && t.agent_id === this.currentUser.id)
+            .sort((a, b) => new Date(a.last_interaction_at || a.created_at).getTime() - new Date(b.last_interaction_at || b.created_at).getTime());
         
         container.innerHTML = myTickets.map(t => {
             const initial = t.customers?.full_name ? t.customers.full_name.charAt(0).toUpperCase() : 'C';
-            return `<div id="bubble-${t.id}" onclick="agentApp.pickTicket('${t.id}')" class="chat-bubble cursor-pointer text-lg font-black w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 shrink-0 border-2 ${this.activeTicketId === t.id ? 'border-slate-800' : 'border-transparent'}" data-sender="${t.last_sender || 'customer'}" data-time="${t.last_interaction_at || t.created_at}" title="${t.customers?.full_name || 'Cliente'} (HZ-${t.protocol_number})">${initial}</div>`
+            return `
+            <div id="bubble-${t.id}" onclick="agentApp.pickTicket('${t.id}')" 
+                 class="chat-bubble cursor-pointer text-lg font-black w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110 shrink-0 border-2 ${this.activeTicketId === t.id ? 'border-slate-800' : 'border-transparent'}" 
+                 data-sender="${t.last_sender || 'customer'}" 
+                 data-time="${t.last_interaction_at || t.created_at}" 
+                 title="${t.customers?.full_name || 'Cliente'} (HZ-${t.protocol_number})">
+                 ${initial}
+            </div>`
         }).join('');
     },
 
@@ -454,6 +475,7 @@ const App = {
         this.isRegisterMode = !this.isRegisterMode;
         document.getElementById('auth-title').innerText = this.isRegisterMode ? "Solicitar Acesso" : "Acesso Restrito";
         document.getElementById('btn-login').innerHTML = this.isRegisterMode ? 'Criar Conta' : 'Entrar <span class="material-symbols-outlined">login</span>';
+        
         const regName = document.getElementById('reg-name');
         if (this.isRegisterMode) { 
             regName.classList.remove('hidden-view'); 
@@ -469,7 +491,9 @@ const App = {
             const el = document.getElementById(`sec-${s}`); 
             if(el) el.classList.add('hidden-view'); 
         });
+        
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
+        
         if (target === 'team') this.loadTeam(); 
         if (target === 'dashboard') this.renderDashboard(); 
         if (target === 'settings') this.loadSettingsUI();
@@ -481,7 +505,7 @@ const App = {
             document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
             document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 24;
             document.getElementById('cfg-macro').value = cfg.closure_macro || '';
-        } catch(e) { console.error("Erro UI", e); }
+        } catch(e) { console.error("Erro na tela de UI de configurações", e); }
     },
 
     insertMacroVar(variable) {
@@ -505,7 +529,7 @@ const App = {
             this.systemSettings = payload; 
             alert("Configurações atualizadas!");
         } catch (e) { 
-            alert("Erro ao salvar."); 
+            alert("Erro ao salvar as configurações."); 
         } finally { 
             btn.innerHTML = `<span class="material-symbols-outlined">save</span> Salvar Configurações`; 
         }
@@ -516,7 +540,7 @@ const App = {
             await agentAPI.toggleUpload(this.activeTicketId, isEnabled); 
             this.updateUploadToggleUI(isEnabled); 
         } catch(e) { 
-            alert("Erro de permissão."); 
+            alert("Erro de permissão ao ativar anexo."); 
             document.getElementById('toggle-upload').checked = !isEnabled; 
         } 
     },
@@ -546,7 +570,7 @@ const App = {
             if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
             
             if (tickets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket na fila.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket na fila no momento.</td></tr>`;
                 return;
             }
 
@@ -555,13 +579,33 @@ const App = {
                 const isMine = t.agent_id === this.currentUser.id;
                 const agentName = t.agent_id ? (this.activeAgents.find(a => a.id === t.agent_id)?.full_name || 'Desconhecido') : 'Fila';
 
-                let statusHtml = `<div class="flex flex-col gap-1 items-start">${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}<span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span></div>`;
-                let chBadge = t.channel === 'email' ? `<span class="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">mail</span> E-MAIL</span>` : `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">forum</span> CHAT</span>`;
+                let statusHtml = `
+                <div class="flex flex-col gap-1 items-start">
+                    ${inProg ? `<span class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold">Em Atendimento</span>` : `<span class="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold">Aguardando Fila</span>`}
+                    <span class="live-timer text-xs font-black font-mono text-slate-600" data-time="${t.created_at}">--:--:--</span>
+                </div>`;
+                
+                let chBadge = t.channel === 'email' 
+                    ? `<span class="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">mail</span> E-MAIL</span>` 
+                    : `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded ml-2 font-bold flex items-center w-max gap-1"><span class="material-symbols-outlined text-[10px]">forum</span> CHAT</span>`;
 
-                let agentDisplay = `<select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px] relative z-30"><option value="">Devolver para Fila</option>${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name}</option>`).join('')}</select>`;
-                let actionBtn = inProg && !isMine ? `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full relative z-30"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>` : `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all relative z-30">Atender</button>`;
+                let agentDisplay = `
+                <select onchange="agentApp.reassignTicket('${t.id}', this.value)" class="mt-1 text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full max-w-[150px] relative z-30">
+                    <option value="">Devolver para Fila</option>
+                    ${this.activeAgents.map(a => `<option value="${a.id}" ${a.id === t.agent_id ? 'selected' : ''}>${a.full_name}</option>`).join('')}
+                </select>`;
+                
+                let actionBtn = inProg && !isMine 
+                    ? `<button onclick="agentApp.monitorTicket('${t.id}', '${t.protocol_number}')" class="bg-blue-100 text-blue-700 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-blue-200 transition-all flex items-center gap-1 justify-center w-full relative z-30"><span class="material-symbols-outlined text-[16px]">visibility</span> Monitorar</button>` 
+                    : `<button onclick="agentApp.pickTicket('${t.id}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-blue-600 transition-all relative z-30">Atender</button>`;
 
-                return `<tr class="hover:bg-slate-50 transition-colors relative z-20"><td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} ${chBadge}</td><td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td><td class="p-5">${statusHtml}</td><td class="p-5 text-right w-32">${actionBtn}</td></tr>`;
+                return `
+                <tr class="hover:bg-slate-50 transition-colors relative z-20">
+                    <td class="p-5 font-black text-slate-900">HZ-${t.protocol_number} ${chBadge}</td>
+                    <td class="p-5 font-black text-slate-900">${t.customers.full_name}<br><span class="text-[11px] font-bold text-slate-500">${t.ticket_subjects?.label || '---'}</span> ${agentDisplay}</td>
+                    <td class="p-5">${statusHtml}</td>
+                    <td class="p-5 text-right w-32">${actionBtn}</td>
+                </tr>`;
             }).join('');
         } else {
             gestorView.classList.add('hidden-view');
@@ -572,9 +616,9 @@ const App = {
             
             const msgEl = agentView.querySelector('p');
             if (this.currentUser.status !== 'online') {
-                msgEl.innerHTML = `Você está <strong class="uppercase">${this.currentUser.status}</strong>.<br>Mude para ONLINE para receber chamados.`;
+                msgEl.innerHTML = `Você está <strong class="uppercase">${this.currentUser.status}</strong>.<br>Mude para ONLINE para receber chamados da fila.`;
             } else {
-                msgEl.innerHTML = `O Orquestrador enviará novos chamados automaticamente.<br>Fique atento às bolhas no cabeçalho.`;
+                msgEl.innerHTML = `O Orquestrador enviará novos chamados automaticamente.<br>Fique atento às bolhas no cabeçalho da sua tela.`;
             }
         }
     },
@@ -591,19 +635,23 @@ const App = {
         const modal = document.getElementById('modal-monitor'); 
         const content = document.getElementById('monitor-chat-content');
         document.getElementById('modal-monitor-protocol').innerText = `Protocolo HZ-${protocolNumber}`; 
+        
         modal.classList.remove('hidden-view'); 
-        content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando...</div>';
+        content.innerHTML = '<div class="text-center text-slate-400 font-bold mt-4">Carregando a conversa...</div>';
+        
         try {
             const msgs = await agentAPI.getMessages(ticketId);
             content.innerHTML = msgs.map(m => this.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type)).join(''); 
             content.scrollTop = content.scrollHeight;
+            
             if (this.monitorSub) this.monitorSub.unsubscribe();
+            
             this.monitorSub = agentAPI.subscribeToAllMessages(ticketId, (msgText, senderType, createdAt, fUrl, fName, fType) => { 
                 content.innerHTML += this.formatMonitorMsg(msgText, senderType, createdAt, fUrl, fName, fType); 
                 content.scrollTop = content.scrollHeight; 
             });
         } catch(e) { 
-            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro.</div>'; 
+            content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão ao carregar conversa.</div>'; 
         }
     },
 
@@ -611,13 +659,23 @@ const App = {
         const isAgent = type === 'agent'; 
         const timeStr = createdAt ? new Date(createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : ''; 
         const mediaHtml = this.buildMediaHtml(fileUrl, fileName, fileType);
-        return `<div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4"><div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div><div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${text}${mediaHtml}</div></div>`;
+        
+        return `
+        <div class="flex flex-col ${isAgent ? 'items-end' : 'items-start'} w-full mb-4">
+            <div class="text-[9px] text-slate-400 font-bold mb-1 px-1">${isAgent ? 'Analista' : 'Cliente'} • ${timeStr}</div>
+            <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
+                ${text}${mediaHtml}
+            </div>
+        </div>`;
     },
 
     buildMediaHtml(fileUrl, fileName, fileType) {
         if (!fileUrl) return '';
-        if (fileType && fileType.startsWith('image/')) return `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300 hover:opacity-80 transition-opacity"></a></div>`;
-        else return `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-2 bg-black/10 p-2.5 rounded-lg text-xs font-bold hover:bg-black/20 transition-colors cursor-pointer relative z-30 w-max max-w-full truncate"><span class="material-symbols-outlined text-sm shrink-0">download</span> <span class="truncate">${fileName || 'Arquivo anexado'}</span></a></div>`;
+        if (fileType && fileType.startsWith('image/')) {
+            return `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] h-auto rounded-lg border border-slate-300 hover:opacity-80 transition-opacity"></a></div>`;
+        } else {
+            return `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-2 bg-black/10 p-2.5 rounded-lg text-xs font-bold hover:bg-black/20 transition-colors cursor-pointer relative z-30 w-max max-w-full truncate"><span class="material-symbols-outlined text-sm shrink-0">download</span> <span class="truncate">${fileName || 'Arquivo anexado'}</span></a></div>`;
+        }
     },
 
     closeMonitor() { 
@@ -641,7 +699,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("Limite alcançado!"); 
+                    alert("O limite de 10 atendimentos simultâneos foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -659,7 +717,12 @@ const App = {
 
             document.getElementById('chat-header-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('chat-header-protocol').innerText = `HZ-${t.protocol_number}`; 
-            document.getElementById('chat-header-channel').innerHTML = t.channel === 'email' ? `<span class="material-symbols-outlined text-[14px]">mail</span> E-MAIL` : `<span class="material-symbols-outlined text-[14px]">forum</span> CHAT WEB`; 
+            
+            const isEmail = t.channel === 'email';
+            document.getElementById('chat-header-channel').innerHTML = isEmail 
+                ? `<span class="material-symbols-outlined text-[14px]">mail</span> E-MAIL` 
+                : `<span class="material-symbols-outlined text-[14px]">forum</span> CHAT WEB`; 
+            
             document.getElementById('chat-header-subject').innerText = `• ${t.ticket_subjects?.label || 'Sem assunto'}`;
             
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
@@ -669,13 +732,14 @@ const App = {
 
             this.activeAgents = await agentAPI.getActiveAgents(); 
             this.populateTransferDropdowns();
+            
             if (t.customers?.email) this.loadCustomerHistory(t.customers.email); 
             if (t.customer_id) this.loadCustomerOrders(t.customer_id);
 
             const msgs = await agentAPI.getMessages(id);
             if (this.messageSub) this.messageSub.unsubscribe();
 
-            if (t.channel === 'email') {
+            if (isEmail) {
                 document.getElementById('chat-mode-container').classList.add('hidden-view'); 
                 document.getElementById('email-mode-container').classList.remove('hidden-view');
                 this.renderEmailThread(t, msgs);
@@ -697,28 +761,51 @@ const App = {
                 });
             }
         } catch (e) { 
-            alert("Erro ao carregar dados do chat: " + e.message); 
+            alert("Erro ao carregar os dados do chat: " + e.message); 
         }
     },
 
     renderEmailThread(ticket, msgs) {
         const area = document.getElementById('email-thread'); 
         if (!area) return; 
+        
         let html = '';
+        
         if (msgs.length > 0) {
             const firstMsg = msgs[0]; 
             const dateStr = new Date(firstMsg.created_at).toLocaleString('pt-BR');
-            html += `<div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative z-30"><div class="flex justify-between items-start border-b border-slate-100 pb-4 mb-4"><div><div class="font-black text-slate-900 text-lg">${ticket.customers?.full_name || 'Cliente'}</div><div class="text-sm font-bold text-slate-500">&lt;${ticket.customers?.email || 'Sem e-mail'}&gt;</div></div><div class="text-xs font-bold text-slate-400">${dateStr}</div></div><div class="text-sm text-slate-800 whitespace-pre-wrap font-medium leading-relaxed">${firstMsg.content}</div>${this.buildMediaHtml(firstMsg.file_url, firstMsg.file_name, firstMsg.file_type)}</div>`;
+            html += `
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative z-30">
+                <div class="flex justify-between items-start border-b border-slate-100 pb-4 mb-4">
+                    <div>
+                        <div class="font-black text-slate-900 text-lg">${ticket.customers?.full_name || 'Cliente'}</div>
+                        <div class="text-sm font-bold text-slate-500">&lt;${ticket.customers?.email || 'Sem e-mail'}&gt;</div>
+                    </div>
+                    <div class="text-xs font-bold text-slate-400">${dateStr}</div>
+                </div>
+                <div class="text-sm text-slate-800 whitespace-pre-wrap font-medium leading-relaxed">${firstMsg.content}</div>
+                ${this.buildMediaHtml(firstMsg.file_url, firstMsg.file_name, firstMsg.file_type)}
+            </div>`;
         }
+        
         if (msgs.length > 1) {
             html += `<div class="flex items-center gap-4 my-6"><div class="h-px bg-slate-200 flex-1"></div><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Histórico da Thread</span><div class="h-px bg-slate-200 flex-1"></div></div>`;
             for (let i = 1; i < msgs.length; i++) {
                 const m = msgs[i]; 
                 const isAgent = m.sender_type === 'agent'; 
                 const dateStr = new Date(m.created_at).toLocaleString('pt-BR'); 
-                const senderName = isAgent ? 'Nossa Equipe' : (ticket.customers?.full_name || 'Cliente'); 
+                const senderName = isAgent ? 'Nossa Equipe (Analista)' : (ticket.customers?.full_name || 'Cliente'); 
                 const bgColor = isAgent ? 'bg-blue-50 border-blue-100' : 'bg-white border-slate-200';
-                html += `<div class="p-5 rounded-2xl border ${bgColor} shadow-sm relative z-30 mb-4 ${isAgent ? 'ml-12' : 'mr-12'}"><div class="flex justify-between items-center mb-3 border-b ${isAgent ? 'border-blue-100' : 'border-slate-100'} pb-2"><span class="text-xs font-black ${isAgent ? 'text-blue-700' : 'text-slate-700'}">${senderName}</span><span class="text-[10px] font-bold text-slate-400">${dateStr}</span></div><div class="text-sm text-slate-700 whitespace-pre-wrap">${m.content}</div>${this.buildMediaHtml(m.file_url, m.file_name, m.file_type)}</div>`;
+                
+                html += `
+                <div class="p-5 rounded-2xl border ${bgColor} shadow-sm relative z-30 mb-4 ${isAgent ? 'ml-12' : 'mr-12'}">
+                    <div class="flex justify-between items-center mb-3 border-b ${isAgent ? 'border-blue-100' : 'border-slate-100'} pb-2">
+                        <span class="text-xs font-black ${isAgent ? 'text-blue-700' : 'text-slate-700'}">${senderName}</span>
+                        <span class="text-[10px] font-bold text-slate-400">${dateStr}</span>
+                    </div>
+                    <div class="text-sm text-slate-700 whitespace-pre-wrap">${m.content}</div>
+                    ${this.buildMediaHtml(m.file_url, m.file_name, m.file_type)}
+                </div>`;
             }
         }
         area.innerHTML = html; 
@@ -730,12 +817,18 @@ const App = {
         const mediaHtml = this.buildMediaHtml(fileUrl, fileName, fileType);
         const area = document.getElementById('chat-history'); 
         if(!area) return;
-        area.innerHTML += `<div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 whitespace-pre-wrap'} relative z-30">${text}${mediaHtml}</div></div>`;
+        
+        area.innerHTML += `
+        <div class="flex ${isAgent ? 'justify-end' : 'justify-start'} w-full">
+            <div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isAgent ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 whitespace-pre-wrap'} relative z-30">
+                ${text}${mediaHtml}
+            </div>
+        </div>`;
         area.scrollTop = area.scrollHeight;
     },
 
     async closeTicket() {
-        if (!confirm("Encerrar atendimento?")) return;
+        if (!confirm("Tem certeza que deseja encerrar o atendimento atual?")) return;
         try { 
             await agentAPI.closeTicket(this.activeTicketId, document.getElementById('crm-tag2').value); 
             this.activeTicketId = null; 
@@ -743,7 +836,7 @@ const App = {
             this.navigate('queue'); 
             Orchestrator.findAndClaimNext(); 
         } catch (error) { 
-            alert("Erro ao fechar."); 
+            alert("Erro ao tentar fechar o ticket."); 
         }
     },
 
@@ -773,7 +866,7 @@ const App = {
         const newAg = document.getElementById('transfer-agent').value;
         if (!newSub && !newAg) return;
         
-        if (confirm("Transferir chamado?")) { 
+        if (confirm("Você quer mesmo transferir este chamado para outra pessoa/fila?")) { 
             try { 
                 await agentAPI.transferTicket(this.activeTicketId, newSub, newAg, document.getElementById('crm-tag2').value); 
                 this.activeTicketId = null; 
@@ -791,10 +884,21 @@ const App = {
             const hist = await agentAPI.getCustomerHistoryByEmail(email); 
             const container = document.getElementById('history-list');
             if(hist.length === 0) { 
-                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; 
+                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior encontrado.</div>'; 
                 return; 
             }
-            container.innerHTML = hist.map(h => `<div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300 relative z-20"><div><div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div><div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'S/ Assunto'}</div><div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`).join('');
+            
+            container.innerHTML = hist.map(h => `
+            <div class="p-3 bg-slate-50 border rounded-xl flex justify-between items-center transition-all hover:border-blue-300 relative z-20">
+                <div>
+                    <div class="text-[10px] font-black text-slate-400">HZ-${h.protocol_number}</div>
+                    <div class="text-xs font-bold text-slate-700 truncate max-w-[200px]">${h.ticket_subjects?.label || 'Sem Assunto'}</div>
+                    <div class="text-[10px] text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div>
+                </div>
+                <button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa Completa" class="w-8 h-8 flex items-center justify-center bg-white border rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 shadow-sm transition-all">
+                    <span class="material-symbols-outlined text-sm">visibility</span>
+                </button>
+            </div>`).join('');
         } catch (e) { console.error(e); }
     },
 
@@ -808,12 +912,17 @@ const App = {
             modal.classList.remove('hidden-view');
             
             if(msgs.length === 0) { 
-                content.innerHTML = '<div class="text-center text-slate-400 font-bold">Sem mensagens registradas.</div>'; 
+                content.innerHTML = '<div class="text-center text-slate-400 font-bold">Não existem mensagens registradas neste protocolo.</div>'; 
                 return; 
             }
             
-            content.innerHTML = msgs.map(m => `<div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">${m.content}</div></div>`).join('');
-        } catch (e) { alert("Erro ao carregar conversa."); }
+            content.innerHTML = msgs.map(m => `
+            <div class="flex ${m.sender_type === 'agent' ? 'justify-end' : 'justify-start'} w-full">
+                <div class="max-w-[85%] p-3 rounded-xl text-xs font-medium shadow-sm whitespace-pre-wrap ${m.sender_type === 'agent' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
+                    ${m.content}
+                </div>
+            </div>`).join('');
+        } catch (e) { alert("Erro ao tentar abrir a conversa."); }
     },
 
     showNewOrderForm() { 
@@ -824,7 +933,7 @@ const App = {
         const product = document.getElementById('order-product').value; 
         const qty = document.getElementById('order-qty').value; 
         const amount = document.getElementById('order-amount').value;
-        if(!product || !amount) return alert("Preencha Produto e Valor.");
+        if(!product || !amount) return alert("Por favor, preencha o Nome do Produto e o Valor.");
         
         try { 
             await agentAPI.createOrder({ customer_id: this.currentCustomer.id, product_name: product, quantity: parseInt(qty), amount: parseFloat(amount.replace(',', '.')) }); 
@@ -833,7 +942,7 @@ const App = {
             document.getElementById('order-form').classList.add('hidden-view'); 
             this.loadCustomerOrders(this.currentCustomer.id); 
         } catch (e) { 
-            alert("Erro ao salvar pedido."); 
+            alert("Erro ao tentar salvar o pedido no CRM."); 
         }
     },
 
@@ -842,10 +951,20 @@ const App = {
             const orders = await agentAPI.getCustomerOrders(customerId); 
             const container = document.getElementById('order-list');
             if(orders.length === 0) { 
-                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum pedido.</div>'; 
+                container.innerHTML = '<div class="text-xs text-slate-400 font-bold">O cliente não possui nenhum pedido registrado.</div>'; 
                 return; 
             }
-            container.innerHTML = orders.map(o => `<div class="p-3 bg-white border border-dashed border-slate-300 rounded-xl flex justify-between items-center hover:bg-slate-50 transition-colors relative z-20"><div><div class="text-xs font-black text-slate-800">${o.product_name}</div><div class="text-[10px] font-bold text-slate-500">${o.quantity} un • R$ ${o.amount.toFixed(2).replace('.', ',')}</div></div><div class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">${new Date(o.created_at).toLocaleDateString()}</div></div>`).join('');
+            
+            container.innerHTML = orders.map(o => `
+            <div class="p-3 bg-white border border-dashed border-slate-300 rounded-xl flex justify-between items-center hover:bg-slate-50 transition-colors relative z-20">
+                <div>
+                    <div class="text-xs font-black text-slate-800">${o.product_name}</div>
+                    <div class="text-[10px] font-bold text-slate-500">${o.quantity} unidade(s) • R$ ${o.amount.toFixed(2).replace('.', ',')}</div>
+                </div>
+                <div class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                    ${new Date(o.created_at).toLocaleDateString()}
+                </div>
+            </div>`).join('');
         } catch (e) { console.error(e); }
     },
 
@@ -871,13 +990,33 @@ const App = {
             
             this.updateStatusChart(open, inProgress, closed); 
             this.updateAnalystRanking(tickets, profiles);
-        } catch (error) { console.error("Erro Dashboard:", error); }
+        } catch (error) { console.error("Erro no Dashboard Executivo:", error); }
     },
 
     updateStatusChart(open, inProgress, closed) {
         const ctx = document.getElementById('chartStatus').getContext('2d'); 
         if (window.myChart) window.myChart.destroy();
-        window.myChart = new Chart(ctx, { type: 'doughnut', data: { labels: ['Aberto', 'Em Curso', 'Finalizados'], datasets: [{ data: [open, inProgress, closed], backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'], borderWidth: 0, hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } } } });
+        
+        window.myChart = new Chart(ctx, { 
+            type: 'doughnut', 
+            data: { 
+                labels: ['Aberto', 'Em Curso', 'Finalizados'], 
+                datasets: [{ 
+                    data: [open, inProgress, closed], 
+                    backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'], 
+                    borderWidth: 0, 
+                    hoverOffset: 4 
+                }] 
+            }, 
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                cutout: '75%', 
+                plugins: { 
+                    legend: { position: 'bottom', labels: { padding: 20, font: { family: 'Manrope', weight: 'bold' } } } 
+                } 
+            } 
+        });
     },
 
     updateAnalystRanking(tickets, profiles) {
@@ -889,16 +1028,26 @@ const App = {
         }).sort((a, b) => b.avg - a.avg);
         
         if (ranking.length === 0) { 
-            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">S/ Dados.</div>`; 
+            container.innerHTML = `<div class="text-sm text-slate-400 font-bold text-center py-4">Sem dados de NPS para ranquear.</div>`; 
             return; 
         }
         
         container.innerHTML = ranking.map((r, index) => { 
             const badgeColor = index === 0 ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'; 
-            return `<div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-slate-100 relative z-20"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div><span class="font-bold text-slate-700">${r.name}</span></div><span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg > 0 ? 'text-blue-600' : 'text-slate-400'} shadow-sm">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span></div>`; 
+            return `
+            <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-slate-100 relative z-20">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${badgeColor} border">${index + 1}º</div>
+                    <span class="font-bold text-slate-700">${r.name}</span>
+                </div>
+                <span class="px-3 py-1 bg-white border rounded-full font-black text-sm ${r.avg > 0 ? 'text-blue-600' : 'text-slate-400'} shadow-sm">${r.avg > 0 ? r.avg.toFixed(1) : '-'}</span>
+            </div>`; 
         }).join('');
     },
 
+    // ==========================================
+    // GESTÃO DE EQUIPE E CHAT INTERNO (GESTOR)
+    // ==========================================
     async loadTeam() {
         const team = await agentAPI.getTeamProfiles(); 
         const logs = await agentAPI.getAgentLogsToday(); 
@@ -953,10 +1102,25 @@ const App = {
                 </div>`;
             }
 
-            const selStatus = `<select onchange="agentApp.forceAgentStatus('${member.id}', this.value)" class="text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full relative z-30 mb-2"><option value="online" ${member.status === 'online' ? 'selected' : ''}>Forçar Online</option><option value="pausa" ${member.status === 'pausa' ? 'selected' : ''}>Forçar Pausa</option><option value="backoffice" ${member.status === 'backoffice' ? 'selected' : ''}>Forçar Backoffice</option><option value="offline" ${member.status === 'offline' ? 'selected' : ''}>Forçar Offline</option></select>`;
-            const chatBtn = member.id !== this.currentUser.id ? `<button onclick="agentApp.openInternalChat('${member.id}', '${member.full_name}')" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all flex items-center justify-center w-full gap-1"><span class="material-symbols-outlined text-[12px]">forum</span> Falar c/ Agente</button>` : '';
+            const selStatus = `
+            <select onchange="agentApp.forceAgentStatus('${member.id}', this.value)" class="text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-600 rounded p-1 outline-none w-full relative z-30 mb-2">
+                <option value="online" ${member.status === 'online' ? 'selected' : ''}>Forçar Online</option>
+                <option value="pausa" ${member.status === 'pausa' ? 'selected' : ''}>Forçar Pausa</option>
+                <option value="backoffice" ${member.status === 'backoffice' ? 'selected' : ''}>Forçar Backoffice</option>
+                <option value="offline" ${member.status === 'offline' ? 'selected' : ''}>Forçar Offline</option>
+            </select>`;
+            
+            const chatBtn = member.id !== this.currentUser.id 
+                ? `<button onclick="agentApp.openInternalChat('${member.id}', '${member.full_name}')" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all flex items-center justify-center w-full gap-1"><span class="material-symbols-outlined text-[12px]">forum</span> Falar c/ Agente</button>` 
+                : '';
 
-            return `<tr class="relative z-20 hover:bg-slate-50 transition-colors"><td class="p-5 font-black text-slate-900">${member.full_name}<div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">${member.role}</div>${ticketsBadge}</td><td class="p-5">${timeHtml}</td><td class="p-5 w-[250px]">${skillsHTML}</td><td class="p-5 text-right w-36">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs mb-2">Aprovar</button>` : selStatus}${chatBtn}</td></tr>`;
+            return `
+            <tr class="relative z-20 hover:bg-slate-50 transition-colors">
+                <td class="p-5 font-black text-slate-900">${member.full_name}<div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">${member.role}</div>${ticketsBadge}</td>
+                <td class="p-5">${timeHtml}</td>
+                <td class="p-5 w-[250px]">${skillsHTML}</td>
+                <td class="p-5 text-right w-36">${!member.is_approved ? `<button onclick="agentApp.approveMember('${member.id}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs mb-2">Aprovar</button>` : selStatus}${chatBtn}</td>
+            </tr>`;
         }).join('');
     },
 
@@ -970,13 +1134,17 @@ const App = {
         document.getElementById('modal-internal-chat').classList.remove('hidden-view');
         
         const content = document.getElementById('internal-chat-content');
-        content.innerHTML = '<div class="text-center text-slate-400 text-xs font-bold">Carregando...</div>';
+        content.innerHTML = '<div class="text-center text-slate-400 text-xs font-bold">Carregando histórico...</div>';
         
         try {
+            if (!this.internalChatTarget) throw new Error("ID do usuário alvo não fornecido.");
             const msgs = await agentAPI.getInternalMessages(this.currentUser.id, this.internalChatTarget);
             content.innerHTML = '';
             msgs.forEach(m => this.renderInternalMsg(m, m.sender_id === this.currentUser.id));
-        } catch(e) { content.innerHTML = '<div class="text-center text-red-400 text-xs font-bold">Erro.</div>'; }
+        } catch(e) { 
+            console.error("Erro Chat Interno:", e);
+            content.innerHTML = `<div class="text-center text-red-400 text-xs font-bold">Falha ao abrir a conversa.</div>`; 
+        }
     },
 
     closeInternalChat() {
@@ -986,12 +1154,18 @@ const App = {
     renderInternalMsg(msg, isMe) {
         const content = document.getElementById('internal-chat-content');
         const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-        content.innerHTML += `<div class="flex ${isMe ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[85%] p-2 rounded-xl text-xs font-medium shadow-sm ${isMe ? 'bg-slate-800 text-white rounded-tr-none' : 'bg-white border text-slate-800 rounded-tl-none'}"><div class="whitespace-pre-wrap">${msg.content}</div><div class="text-[8px] text-right mt-1 opacity-60 font-bold">${timeStr}</div></div></div>`;
+        content.innerHTML += `
+        <div class="flex ${isMe ? 'justify-end' : 'justify-start'} w-full">
+            <div class="max-w-[85%] p-2 rounded-xl text-xs font-medium shadow-sm ${isMe ? 'bg-slate-800 text-white rounded-tr-none' : 'bg-white border text-slate-800 rounded-tl-none'}">
+                <div class="whitespace-pre-wrap">${msg.content}</div>
+                <div class="text-[8px] text-right mt-1 opacity-60 font-bold">${timeStr}</div>
+            </div>
+        </div>`;
         content.scrollTop = content.scrollHeight;
     },
 
     async approveMember(id) { 
-        if(confirm("Aprovar?")) { 
+        if(confirm("Deseja realmente aprovar este analista?")) { 
             await agentAPI.approveUser(id, 'analista'); 
             this.loadTeam(); 
         } 
@@ -1005,7 +1179,7 @@ const App = {
             }
             this.loadTeam(); 
         } catch (e) { 
-            console.error(e);
+            console.error("Erro toggleChannel", e);
             this.loadTeam(); 
         } 
     },
@@ -1015,6 +1189,7 @@ const App = {
             await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); 
             this.loadTeam(); 
         } catch (e) { 
+            console.error("Erro toggleSkill", e);
             this.loadTeam(); 
         } 
     }

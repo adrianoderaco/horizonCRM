@@ -69,7 +69,7 @@ export const Orchestrator = {
                 await this.evaluateAndClaim(tickets[0]);
             }
         } catch (err) {
-            console.error("Erro Orquestrador:", err);
+            console.error("Erro na busca de tickets pelo Orquestrador:", err);
         }
     },
 
@@ -98,6 +98,6 @@ export const Orchestrator = {
             if (data && data.length > 0) {
                 window.dispatchEvent(new CustomEvent('ticket-assigned', { detail: data[0] }));
             }
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error("Erro de validação no Orquestrador:", err); }
     }
 };
