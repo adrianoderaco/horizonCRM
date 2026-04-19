@@ -2,8 +2,32 @@ import { agentAPI } from './api.js';
 import { supabase } from '../supabase.js';
 import { Orchestrator } from './orchestrator.js';
 import { Sidebar } from './sidebar.js';
-import { Translator } from './i18n.js';
-import { Dashboard } from './dashboard.js';
+
+// Dicionário embutido para evitar falhas de importação de módulos externos
+const Translator = {
+    currentLang: 'pt',
+    cache: {},
+    dictionary: {
+        'pt': { 'auth-title': 'Acesso Restrito', 'auth-desc': 'Insira suas credenciais.', 'lbl-login-hero': 'Painel Operacional<br/><span class="text-blue-500">Realtime</span>', 'lbl-top-console': 'Console', 'lbl-btn-settings': 'Configurações Gerais', 'lbl-title-queue': 'Monitor de Atendimentos', 'lbl-wait-assign': 'Aguardando Atribuição', 'lbl-wait-desc': 'O Orquestrador enviará novos chamados automaticamente.\nFique atento às bolhas no cabeçalho.', 'lbl-title-team': 'Gestão de Equipe & Skills', 'lbl-title-dash': 'Dashboard & Relatórios', 'lbl-title-settings': 'Configurações Gerais', 'queue-count': 'tickets ativos', 'lbl-th-protocol': 'Protocolo', 'lbl-th-client': 'Cliente / Assunto', 'lbl-th-status': 'Status / Tempo', 'lbl-th-action': 'Ação' },
+        'en': { 'auth-title': 'Restricted Access', 'auth-desc': 'Enter your credentials.', 'lbl-login-hero': 'Operations Dashboard<br/><span class="text-blue-500">Realtime</span>', 'lbl-top-console': 'Console', 'lbl-btn-settings': 'General Settings', 'lbl-title-queue': 'Ticket Monitor', 'lbl-wait-assign': 'Waiting for Assignment', 'lbl-wait-desc': 'The Orchestrator will route new tickets automatically.\nWatch for bubbles in the header.', 'lbl-title-team': 'Team & Skills Management', 'lbl-title-dash': 'Dashboard & Reports', 'lbl-title-settings': 'General Settings', 'queue-count': 'active tickets', 'lbl-th-protocol': 'Protocol', 'lbl-th-client': 'Customer / Subject', 'lbl-th-status': 'Status / Time', 'lbl-th-action': 'Action' },
+        'es': { 'auth-title': 'Acceso Restringido', 'auth-desc': 'Ingrese sus credenciales.', 'lbl-login-hero': 'Panel Operativo<br/><span class="text-blue-500">Realtime</span>', 'lbl-top-console': 'Consola', 'lbl-btn-settings': 'Configuración General', 'lbl-title-queue': 'Monitor de Tickets', 'lbl-wait-assign': 'Esperando Asignación', 'lbl-wait-desc': 'El Orquestador enviará nuevos tickets automáticamente.\nEsté atento a las burbujas en el encabezado.', 'lbl-title-team': 'Gestión de Equipo y Habilidades', 'lbl-title-dash': 'Panel y Reportes', 'lbl-title-settings': 'Configuración General', 'queue-count': 'tickets activos', 'lbl-th-protocol': 'Protocolo', 'lbl-th-client': 'Cliente / Asunto', 'lbl-th-status': 'Estado / Tiempo', 'lbl-th-action': 'Acción' }
+    },
+    setLanguage(lang) {
+        this.currentLang = lang; const map = this.dictionary[lang]; if (!map) return;
+        for (const [id, text] of Object.entries(map)) {
+            const el = document.getElementById(id);
+            if (el) { if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = text; else el.innerHTML = text; }
+        }
+    },
+    async translateDynamic(text) {
+        if (!text || text.trim() === '' || this.currentLang === 'pt') return text; 
+        const cacheKey = `${text}_${this.currentLang}`; if (this.cache[cacheKey]) return this.cache[cacheKey];
+        try {
+            const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${this.currentLang}&dt=t&q=${encodeURIComponent(text)}`);
+            const data = await res.json(); let translated = ''; data[0].forEach(item => translated += item[0]); this.cache[cacheKey] = translated; return translated;
+        } catch (e) { return text; }
+    }
+};
 
 const App = {
     activeTicketId: null,
@@ -22,6 +46,7 @@ const App = {
     systemSettings: null,
     closingTickets: new Set(),
     
+    // Variáveis que o Dashboard precisa
     dashboardTickets: [],
     allProfiles: [],
     allTeamProfiles: [],
@@ -30,12 +55,10 @@ const App = {
     teamSearchQuery: "",
     tableSearchQuery: "",
 
-    // Preferência de Áudio
     isSoundEnabled: true,
 
     async init() {
         window.agentApp = this; 
-        Dashboard.init(this);
         
         try {
             this.systemSettings = await agentAPI.getSystemSettings();
@@ -44,7 +67,6 @@ const App = {
             this.systemSettings = { is_orchestrator_active: false, chat_timeout_min: 10, email_timeout_hr: 24, chat_warning_min: 8, email_warning_hr: 20 };
         }
 
-        // Restaura a preferência de Som
         const savedSound = localStorage.getItem('horizon_sound');
         if (savedSound !== null) this.isSoundEnabled = savedSound === 'true';
         const iconSound = document.getElementById('icon-sound');
@@ -65,26 +87,22 @@ const App = {
 
         document.getElementById('login-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('btn-login'); 
-            const orig = btn.innerHTML;
+            const btn = document.getElementById('btn-login'); const orig = btn.innerHTML;
             btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Processando...`;
             
             const email = document.getElementById('login-email').value; 
             const pass = document.getElementById('login-pass').value;
 
             if (agentApp.isRegisterMode) {
-                try { 
-                    await agentAPI.register(document.getElementById('reg-name').value, email, pass); 
-                    alert("Aguarde aprovação pelo Gestor."); agentApp.toggleAuthMode(); 
-                } catch (err) { alert("Erro ao registrar: " + err.message); } finally { btn.innerHTML = orig; }
+                try { await agentAPI.register(document.getElementById('reg-name').value, email, pass); alert("Aguarde aprovação."); agentApp.toggleAuthMode(); } 
+                catch (err) { alert("Erro ao registrar: " + err.message); } finally { btn.innerHTML = orig; }
                 return;
             }
 
             try {
                 const authData = await agentAPI.login(email, pass);
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
-                
-                if (!profile || !profile.is_approved) { alert("Acesso pendente de aprovação."); await supabase.auth.signOut(); btn.innerHTML = orig; return; }
+                if (!profile || !profile.is_approved) { alert("Acesso pendente."); await supabase.auth.signOut(); btn.innerHTML = orig; return; }
                 
                 agentApp.currentUser = profile; 
                 document.getElementById('view-login').classList.add('hidden-view'); 
@@ -101,7 +119,7 @@ const App = {
                     document.getElementById('wrapper-routing').classList.remove('hidden-view'); 
                     document.getElementById('btn-settings').classList.remove('hidden-view'); 
                     if (document.getElementById('toggle-routing')) document.getElementById('toggle-routing').checked = agentApp.systemSettings.is_orchestrator_active === true;
-                    await Dashboard.render(); 
+                    await agentApp.renderDashboard(); 
                 }
                 
                 if(document.getElementById('agent-status-select')) document.getElementById('agent-status-select').value = profile.status || 'online';
@@ -113,34 +131,31 @@ const App = {
                 agentAPI.subscribeToQueue(async () => {
                     await agentApp.loadQueue();
                     if (agentApp.currentUser && agentApp.currentUser.status === 'online') Orchestrator.findAndClaimNext();
+                    if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) await agentApp.renderDashboard();
+                    if (document.getElementById('sec-team') && !document.getElementById('sec-team').classList.contains('hidden-view')) await agentApp.loadTeam();
                 });
 
                 agentAPI.subscribeToSettings((newCfg) => {
-                    agentApp.systemSettings = newCfg;
-                    Orchestrator.updateSettings(newCfg);
+                    agentApp.systemSettings = newCfg; Orchestrator.updateSettings(newCfg);
                     if (profile.role === 'gestor' && document.getElementById('toggle-routing')) document.getElementById('toggle-routing').checked = newCfg.is_orchestrator_active === true;
                 });
 
-                agentAPI.subscribeToProfiles(async () => { 
-                    if (!document.getElementById('sec-team').classList.contains('hidden-view')) await agentApp.loadTeam(); 
-                });
+                agentAPI.subscribeToProfiles(async () => { if (!document.getElementById('sec-team').classList.contains('hidden-view')) await agentApp.loadTeam(); });
 
                 agentAPI.subscribeToMyProfile(agentApp.currentUser.id, async (newProfile) => {
                     if (newProfile.status !== agentApp.currentUser.status) {
                         agentApp.currentUser.status = newProfile.status;
                         if(document.getElementById('agent-status-select')) document.getElementById('agent-status-select').value = newProfile.status;
                         if (newProfile.status !== 'online') {
-                            Orchestrator.setStatus(false);
-                            agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view');
-                            agentApp.navigate('queue'); alert("Atenção: Seu status foi alterado.");
-                        } else { Orchestrator.setStatus(true); }
-                        await agentApp.loadQueue();
+                            Orchestrator.setStatus(false); agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view');
+                            agentApp.navigate('queue'); alert("Status alterado."); await agentApp.loadQueue();
+                        } else { Orchestrator.setStatus(true); await agentApp.loadQueue(); }
                     }
                 });
 
                 agentAPI.subscribeToInternalMessages(agentApp.currentUser.id, async (msg) => {
                     if (document.getElementById('modal-internal-chat').classList.contains('hidden-view') || agentApp.internalChatTarget !== msg.sender_id) {
-                        agentApp.playAlert('message'); // Toca o som para nova msg interna
+                        agentApp.playAlert('message'); 
                         const alertBtn = document.getElementById('btn-internal-alert');
                         if (alertBtn) {
                             alertBtn.classList.remove('hidden-view');
@@ -152,7 +167,7 @@ const App = {
                     } else { agentApp.renderInternalMsg(msg, false); }
                 });
 
-            } catch (error) { alert(`Erro ao tentar entrar no sistema:\n\n${error.message}`); btn.innerHTML = orig; }
+            } catch (error) { console.error("ERRO DE LOGIN:", error); alert(`Erro: ${error.message}`); btn.innerHTML = orig; }
         });
 
         document.getElementById('agent-chat-form')?.addEventListener('submit', async (e) => {
@@ -183,13 +198,10 @@ const App = {
         document.getElementById('internal-chat-form')?.addEventListener('submit', async (e) => {
             e.preventDefault(); const input = document.getElementById('internal-chat-input'); const text = input.value.trim();
             if (!text || !agentApp.internalChatTarget) return;
-            try { await agentAPI.sendInternalMessage(agentApp.currentUser.id, agentApp.internalChatTarget, text); agentApp.renderInternalMsg({ content: text }, true); input.value = ''; } catch (err) { alert("Erro ao enviar."); }
+            try { await agentAPI.sendInternalMessage(agentApp.currentUser.id, agentApp.internalChatTarget, text); agentApp.renderInternalMsg({ content: text }, true); input.value = ''; } catch (err) { alert("Erro ao enviar mensagem."); }
         });
     },
 
-    // ===============================================
-    // LÓGICA DE SOM
-    // ===============================================
     toggleSound() {
         this.isSoundEnabled = !this.isSoundEnabled;
         localStorage.setItem('horizon_sound', this.isSoundEnabled);
@@ -200,130 +212,11 @@ const App = {
     playAlert(type) {
         if (!this.isSoundEnabled) return;
         try {
-            const url = type === 'ticket' 
-                ? 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' 
-                : 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'; 
-            const audio = new Audio(url);
-            audio.play();
+            const url = type === 'ticket' ? 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' : 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'; 
+            const audio = new Audio(url); audio.play();
         } catch(e) { console.error("Erro ao tocar áudio", e); }
     },
 
-    // ===============================================
-    // DELEGAÇÕES
-    // ===============================================
-    async renderDashboard() { await Dashboard.render(); },
-    filterDashboardByAgent(id, name) { Dashboard.filterDashboardByAgent(id, name); },
-    filterTable() { agentApp.tableSearchQuery = document.getElementById('table-search')?.value.toLowerCase() || ""; Dashboard.renderClosedCasesTable(agentApp.dashboardTickets, agentApp.allProfiles); },
-    exportCSV() { Dashboard.exportCSV(); },
-    async changeLanguage(lang) { Translator.setLanguage(lang); if (agentApp.activeTicketId) await agentApp.pickTicket(agentApp.activeTicketId); },
-
-    // ===============================================
-    // TIMERS, SLA E BOLHAS VISUAIS
-    // ===============================================
-    startLiveTimers() {
-        if (agentApp.timerInterval) clearInterval(agentApp.timerInterval);
-        
-        agentApp.timerInterval = setInterval(() => {
-            document.querySelectorAll('.live-timer').forEach(el => {
-                const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
-                const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0'); const m = String(Math.floor((diffSeconds % 3600) / 60)).padStart(2, '0'); const s = String(diffSeconds % 60).padStart(2, '0');
-                el.innerText = `${h}:${m}:${s}`;
-                if (diffSeconds > 600) { el.classList.remove('text-slate-600'); el.classList.add('text-red-600'); }
-            });
-
-            if (agentApp.systemSettings && agentApp.currentUser) {
-                const chatWarnSecs = (agentApp.systemSettings.chat_warning_min || 8) * 60;
-                const emailWarnSecs = (agentApp.systemSettings.email_warning_hr || 24) * 3600;
-                const chatCloseSecs = (agentApp.systemSettings.chat_timeout_min || 10) * 60;
-                const emailCloseSecs = (agentApp.systemSettings.email_timeout_hr || 48) * 3600;
-                
-                const totalChatCloseSecs = chatWarnSecs + chatCloseSecs;
-                const totalEmailCloseSecs = emailWarnSecs + emailCloseSecs;
-
-                agentApp.activeTickets.forEach(t => {
-                    if (t.agent_id !== agentApp.currentUser.id) return;
-                    
-                    const lastTime = new Date(t.last_interaction_at || t.created_at).getTime();
-                    const diffSeconds = Math.floor((Date.now() - lastTime) / 1000);
-                    
-                    const el = document.getElementById(`bubble-${t.id}`);
-                    if (el) {
-                        if (t.last_sender === 'customer') {
-                            el.classList.add('animate-pulse');
-                            if (!t.first_reply_at) {
-                                el.style.backgroundColor = '#16a34a'; // Verde (Novo)
-                                el.style.color = '#ffffff';
-                            } else {
-                                el.style.backgroundColor = '#2563eb'; // Azul (Retornou)
-                                el.style.color = '#ffffff';
-                            }
-                        } else {
-                            el.classList.remove('animate-pulse');
-                            const diffMinutes = Math.floor(diffSeconds / 60); 
-                            const maxFadingMins = t.channel === 'web' ? (agentApp.systemSettings.chat_timeout_min || 10) : 60; 
-                            const opacity = Math.max(0.15, 1 - (diffMinutes / maxFadingMins));
-                            el.style.backgroundColor = `rgba(51, 65, 85, ${opacity})`; // Cinza esmaecendo
-                            el.style.color = opacity < 0.4 ? '#0f172a' : '#ffffff';
-                        }
-                    }
-
-                    if (t.last_sender === 'agent' && !agentApp.closingTickets.has(t.id)) {
-                        if (!t.has_warning_sent) {
-                            const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
-                            const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
-                            if (isWebWarn || isEmailWarn) {
-                                t.has_warning_sent = true; 
-                                agentApp.executeWarning(t);
-                            }
-                        } else {
-                            const isWebClose = t.channel === 'web' && diffSeconds >= totalChatCloseSecs;
-                            const isEmailClose = t.channel === 'email' && diffSeconds >= totalEmailCloseSecs;
-                            if (isWebClose || isEmailClose) {
-                                agentApp.closingTickets.add(t.id);
-                                agentApp.executeAutoClose(t);
-                            }
-                        }
-                    }
-                });
-            }
-        }, 1000);
-    },
-
-    async executeWarning(ticket) {
-        try {
-            console.log(`[SLA] Disparando Alerta de Ociosidade (HZ-${ticket.protocol_number})`);
-            let rawMsg = ticket.channel === 'web' ? agentApp.systemSettings.warning_macro_chat : agentApp.systemSettings.warning_macro_email;
-            let msg = rawMsg || "Atenção: O atendimento será encerrado em breve por inatividade. Ainda está por aí?";
-            msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
-            msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
-
-            await agentAPI.sendSystemMessage(ticket.id, msg, 'sla');
-            if (agentApp.activeTicketId === ticket.id) agentApp.renderMsg(msg, 'system');
-        } catch(e) { console.error("Falha ao enviar alerta:", e); }
-    },
-
-    async executeAutoClose(ticket) {
-        try {
-            console.log(`[SLA] Encerrando HZ-${ticket.protocol_number} por inatividade.`);
-            let rawMsg = agentApp.systemSettings.closure_macro;
-            let msg = rawMsg || "Atendimento encerrado por inatividade.";
-            msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
-            msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
-
-            await agentAPI.sendSystemMessage(ticket.id, msg, null);
-            await agentAPI.closeTicket(ticket.id, 'Outros', 'Abandono', 'Encerrado pelo sistema (Falta de interação do cliente).');
-            
-            agentApp.activeTickets = agentApp.activeTickets.filter(t => t.id !== ticket.id);
-            if (agentApp.activeTicketId === ticket.id) {
-                agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue');
-            }
-            await agentApp.loadQueue();
-        } catch(e) { console.error("Falha na macro de encerramento:", e); } finally { agentApp.closingTickets.delete(ticket.id); }
-    },
-
-    // ===============================================
-    // CORE GERAL
-    // ===============================================
     async toggleGlobalOrchestrator(isActive) {
         try { await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive }); } catch (e) { document.getElementById('toggle-routing').checked = !isActive; alert("Erro de Conexão."); }
     },
@@ -364,16 +257,16 @@ const App = {
                 agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view');
                 agentApp.navigate('queue'); await agentApp.loadQueue();
             } else { Orchestrator.setStatus(true); await agentApp.loadQueue(); }
-        } catch (e) { alert("Erro ao mudar o status."); }
+        } catch (e) { alert("Erro ao mudar status."); }
     },
 
     async forceAgentStatus(agentId, newStatus) {
         if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
-        try { await agentAPI.changeStatus(agentId, newStatus); if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId); await agentApp.loadTeam(); } catch(e) { alert("Erro ao alterar status."); }
+        try { await agentAPI.changeStatus(agentId, newStatus); if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId); await agentApp.loadTeam(); } catch(e) { alert("Erro ao alterar status do agente."); }
     },
 
     async updateAgentLimits(agentId, maxChats, maxEmails) {
-        try { let c = maxChats === "" ? null : maxChats; let e = maxEmails === "" ? null : maxEmails; await agentAPI.updateAgentLimits(agentId, c, e); } catch (e) { alert("Erro ao atualizar limites."); }
+        try { let c = maxChats === "" ? null : maxChats; let e = maxEmails === "" ? null : maxEmails; await agentAPI.updateAgentLimits(agentId, c, e); } catch (e) { alert("Erro ao atualizar limites do agente."); }
     },
     
     async updateAgentGroup(agentId, groupName) {
@@ -384,6 +277,84 @@ const App = {
         const wm = document.createElement('div'); wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none'; wm.style.zIndex = '99999'; 
         let spans = ''; for(let i=0; i<150; i++) spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
         wm.innerHTML = spans; document.body.appendChild(wm);
+    },
+
+    async logout() {
+        if(confirm("Deseja sair? Seus atendimentos em andamento voltarão para a fila!")) {
+            try { await agentAPI.releaseMyTickets(agentApp.currentUser.id); await agentAPI.changeStatus(agentApp.currentUser.id, 'offline'); await supabase.auth.signOut(); location.reload(); } catch(e) { alert("Erro ao deslogar."); }
+        }
+    },
+
+    startLiveTimers() {
+        if (agentApp.timerInterval) clearInterval(agentApp.timerInterval);
+        agentApp.timerInterval = setInterval(() => {
+            document.querySelectorAll('.live-timer').forEach(el => {
+                const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
+                const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0'); const m = String(Math.floor((diffSeconds % 3600) / 60)).padStart(2, '0'); const s = String(diffSeconds % 60).padStart(2, '0');
+                el.innerText = `${h}:${m}:${s}`;
+                if (diffSeconds > 600) { el.classList.remove('text-slate-600'); el.classList.add('text-red-600'); }
+            });
+
+            if (agentApp.systemSettings && agentApp.currentUser) {
+                const chatWarnSecs = (agentApp.systemSettings.chat_warning_min || 8) * 60; const emailWarnSecs = (agentApp.systemSettings.email_warning_hr || 24) * 3600;
+                const chatCloseSecs = (agentApp.systemSettings.chat_timeout_min || 10) * 60; const emailCloseSecs = (agentApp.systemSettings.email_timeout_hr || 48) * 3600;
+                const totalChatCloseSecs = chatWarnSecs + chatCloseSecs; const totalEmailCloseSecs = emailWarnSecs + emailCloseSecs;
+
+                agentApp.activeTickets.forEach(t => {
+                    if (t.agent_id !== agentApp.currentUser.id) return;
+                    const lastTime = new Date(t.last_interaction_at || t.created_at).getTime();
+                    const diffSeconds = Math.floor((Date.now() - lastTime) / 1000);
+                    
+                    const el = document.getElementById(`bubble-${t.id}`);
+                    if (el) {
+                        if (t.last_sender === 'customer') {
+                            el.classList.add('animate-pulse');
+                            if (!t.first_reply_at) { el.style.backgroundColor = '#16a34a'; el.style.color = '#ffffff'; } else { el.style.backgroundColor = '#2563eb'; el.style.color = '#ffffff'; }
+                        } else {
+                            el.classList.remove('animate-pulse');
+                            const diffMinutes = Math.floor(diffSeconds / 60); const maxFadingMins = t.channel === 'web' ? (agentApp.systemSettings.chat_timeout_min || 10) : 60; 
+                            const opacity = Math.max(0.15, 1 - (diffMinutes / maxFadingMins));
+                            el.style.backgroundColor = `rgba(51, 65, 85, ${opacity})`; el.style.color = opacity < 0.4 ? '#0f172a' : '#ffffff';
+                        }
+                    }
+
+                    if (t.last_sender === 'agent' && !agentApp.closingTickets.has(t.id)) {
+                        if (!t.has_warning_sent) {
+                            const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs; const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
+                            if (isWebWarn || isEmailWarn) { t.has_warning_sent = true; agentApp.executeWarning(t); }
+                        } else {
+                            const isWebClose = t.channel === 'web' && diffSeconds >= totalChatCloseSecs; const isEmailClose = t.channel === 'email' && diffSeconds >= totalEmailCloseSecs;
+                            if (isWebClose || isEmailClose) { agentApp.closingTickets.add(t.id); agentApp.executeAutoClose(t); }
+                        }
+                    }
+                });
+            }
+        }, 1000);
+    },
+
+    async executeWarning(ticket) {
+        try {
+            console.log(`[SLA] Disparando Alerta de Ociosidade (HZ-${ticket.protocol_number})`);
+            let rawMsg = ticket.channel === 'web' ? agentApp.systemSettings.warning_macro_chat : agentApp.systemSettings.warning_macro_email;
+            let msg = rawMsg || "Atenção: O atendimento será encerrado em breve por inatividade. Ainda está por aí?";
+            msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente'); msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
+            await agentAPI.sendSystemMessage(ticket.id, msg, 'sla');
+            if (agentApp.activeTicketId === ticket.id) agentApp.renderMsg(msg, 'system');
+        } catch(e) { console.error("Falha ao enviar alerta:", e); }
+    },
+
+    async executeAutoClose(ticket) {
+        try {
+            console.log(`[SLA] Encerrando HZ-${ticket.protocol_number} por inatividade.`);
+            let rawMsg = agentApp.systemSettings.closure_macro;
+            let msg = rawMsg || "Atendimento encerrado por inatividade.";
+            msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente'); msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
+            await agentAPI.sendSystemMessage(ticket.id, msg, null);
+            await agentAPI.closeTicket(ticket.id, 'Outros', 'Abandono', 'Encerrado pelo sistema (Falta de interação do cliente).');
+            agentApp.activeTickets = agentApp.activeTickets.filter(t => t.id !== ticket.id);
+            if (agentApp.activeTicketId === ticket.id) { agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue'); }
+            await agentApp.loadQueue();
+        } catch(e) { console.error("Falha ao fechar SLA:", e); } finally { agentApp.closingTickets.delete(ticket.id); }
     },
 
     renderBubbles() {
@@ -408,6 +379,54 @@ const App = {
         document.getElementById(`sec-${target}`).classList.remove('hidden-view');
         if (target === 'team') agentApp.loadTeam(); if (target === 'dashboard') agentApp.renderDashboard(); if (target === 'settings') agentApp.loadSettingsUI();
     },
+
+    async loadSettingsUI() {
+        try {
+            const cfg = await agentAPI.getSystemSettings();
+            const qActive = document.getElementById('cfg-queue-active');
+            if (qActive) { qActive.checked = cfg.is_queue_warning_active || false; document.getElementById('cfg-queue-min').value = cfg.queue_warning_min || 2; document.getElementById('cfg-queue-macro').value = cfg.queue_warning_macro || ''; }
+            document.getElementById('cfg-chat-warn-time').value = cfg.chat_warning_min || 8; document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
+            document.getElementById('cfg-email-warn-time').value = cfg.email_warning_hr || 24; document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 48;
+            document.getElementById('cfg-macro-warn-chat').value = cfg.warning_macro_chat || ''; document.getElementById('cfg-macro-warn-email').value = cfg.warning_macro_email || ''; document.getElementById('cfg-macro').value = cfg.closure_macro || '';
+            agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags();
+        } catch(e) { console.error("Erro UI de configurações", e); }
+    },
+
+    renderSettingsTags() {
+        const container = document.getElementById('settings-tags-list'); if (!container) return;
+        let html = '';
+        agentApp.allSubjects.forEach(sub => {
+            const subsubs = agentApp.allSubsubjects.filter(ss => ss.subject_id === sub.id);
+            let subHtml = subsubs.map(ss => `<span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">${ss.label} <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500 transition-colors flex items-center"><span class="material-symbols-outlined text-[12px]">close</span></button></span>`).join('');
+            html += `<div class="border border-slate-200 rounded-xl p-5 bg-white relative z-20 shadow-sm"><div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3"><span class="font-black text-slate-800 text-base flex items-center gap-2"><span class="material-symbols-outlined text-slate-400">label</span> ${sub.label}</span><button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-xs text-red-500 font-bold flex items-center gap-1 hover:underline bg-red-50 px-2 py-1 rounded"><span class="material-symbols-outlined text-[14px]">delete</span> Excluir Motivo</button></div><div class="flex flex-wrap gap-2 mb-4">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div><div class="flex gap-2"><input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-600" placeholder="Digite um novo Submotivo (Tag 2)..."><button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 rounded-lg text-xs font-bold transition-colors">Adicionar Submotivo</button></div></div>`;
+        });
+        container.innerHTML = html;
+    },
+
+    async addTag1() { const input = document.getElementById('new-tag1-input'); const val = input.value.trim(); if(!val) return; try { await agentAPI.createSubject(val); input.value = ''; agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao criar Motivo Principal."); } },
+    async addTag2(subjectId) { const input = document.getElementById(`new-tag2-${subjectId}`); const val = input.value.trim(); if(!val) return; try { await agentAPI.createSubsubject(subjectId, val); input.value = ''; agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao criar Submotivo."); } },
+    async toggleSubject(id, isActive) { if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal e todos os submotivos vinculados a ele?")) return; try { await agentAPI.toggleSubject(id, isActive); agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir."); } },
+    async toggleSubsubject(id, isActive) { try { await agentAPI.toggleSubsubject(id, isActive); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir submotivo."); } },
+    insertMacroVar(variable, targetId = 'cfg-macro') { const txt = document.getElementById(targetId); if(!txt) return; const start = txt.selectionStart; const end = txt.selectionEnd; txt.value = txt.value.substring(0, start) + variable + txt.value.substring(end); txt.focus(); },
+
+    async saveSettings() {
+        const btn = document.getElementById('btn-save-cfg'); const origHtml = btn.innerHTML; btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
+        try {
+            const chatWarn = parseInt(document.getElementById('cfg-chat-warn-time').value) || 8; const chatClose = parseInt(document.getElementById('cfg-chat-time').value) || 10;
+            const emailWarn = parseInt(document.getElementById('cfg-email-warn-time').value) || 24; const emailClose = parseInt(document.getElementById('cfg-email-time').value) || 48;
+            if (chatWarn >= chatClose) { alert("ERRO: No Canal WEB, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
+            if (emailWarn >= emailClose) { alert("ERRO: No Canal E-mail, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
+
+            const payload = { chat_warning_min: chatWarn, chat_timeout_min: chatClose, email_warning_hr: emailWarn, email_timeout_hr: emailClose, warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, warning_macro_email: document.getElementById('cfg-macro-warn-email').value, closure_macro: document.getElementById('cfg-macro').value };
+            const qActive = document.getElementById('cfg-queue-active');
+            if (qActive) { payload.is_queue_warning_active = qActive.checked; payload.queue_warning_min = parseInt(document.getElementById('cfg-queue-min').value) || 2; payload.queue_warning_macro = document.getElementById('cfg-queue-macro').value; }
+            
+            await agentAPI.updateSystemSettings(payload); agentApp.systemSettings = Object.assign({}, agentApp.systemSettings, payload); alert("Configurações atualizadas com sucesso!");
+        } catch (e) { alert("Erro ao salvar as configurações."); } finally { btn.innerHTML = origHtml; }
+    },
+
+    async toggleClientUpload(isEnabled) { try { await agentAPI.toggleUpload(agentApp.activeTicketId, isEnabled); agentApp.updateUploadToggleUI(isEnabled); } catch(e) { alert("Erro de permissão."); document.getElementById('toggle-upload').checked = !isEnabled; } },
+    updateUploadToggleUI(isEnabled) { const textEl = document.getElementById('upload-status-text'); if(!textEl) return; textEl.innerText = isEnabled ? 'Anexos (Cli): Lib' : 'Anexos (Cli): Off'; textEl.className = `text-[10px] font-bold uppercase ${isEnabled ? 'text-blue-600' : 'text-slate-400'}`; },
 
     async loadQueue() {
         try {
@@ -454,19 +473,14 @@ const App = {
         try {
             const ticket = await agentAPI.getTicketDetails(ticketId); const msgs = await agentAPI.getMessages(ticketId);
             let html = `<div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 relative z-20"><h4 class="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">summarize</span> Resumo do Atendimento</h4><div class="grid grid-cols-2 gap-4 text-xs mb-3"><div><div class="font-bold text-blue-900 mb-1">Motivo (Tag 1):</div><div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag1 || 'Não classificado'}</div></div><div><div class="font-bold text-blue-900 mb-1">Submotivo (Tag 2):</div><div class="text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded font-bold inline-block">${ticket.agent_tag2 || 'Não classificado'}</div></div></div><div class="text-xs"><div class="font-bold text-blue-900 mb-1">Observações do Analista:</div><div class="text-blue-800 italic bg-white/60 border border-blue-100 p-3 rounded-lg">${ticket.agent_notes || 'Nenhuma observação registrada.'}</div></div></div><div class="h-px bg-slate-200 mb-4"></div>`;
-            
-            for (let m of msgs) {
-                if(m.sender_type === 'customer') { m.content = await Translator.translateDynamic(m.content); }
-                html += agentApp.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type);
-            }
-            
+            for (let m of msgs) { if(m.sender_type === 'customer') { m.content = await Translator.translateDynamic(m.content); } html += agentApp.formatMonitorMsg(m.content, m.sender_type, m.created_at, m.file_url, m.file_name, m.file_type); }
             content.innerHTML = html; content.scrollTop = content.scrollHeight;
             if (agentApp.monitorSub) agentApp.monitorSub.unsubscribe();
             agentApp.monitorSub = agentAPI.subscribeToAllMessages(ticketId, async (msgText, senderType, createdAt, fUrl, fName, fType) => { 
                 if(senderType === 'customer') msgText = await Translator.translateDynamic(msgText);
                 content.innerHTML += agentApp.formatMonitorMsg(msgText, senderType, createdAt, fUrl, fName, fType); content.scrollTop = content.scrollHeight; 
             });
-        } catch(e) { content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão.</div>'; }
+        } catch(e) { content.innerHTML = '<div class="text-center text-red-400 font-bold mt-4">Erro de conexão ao carregar conversa.</div>'; }
     },
 
     formatMonitorMsg(text, type, createdAt, fileUrl = null, fileName = null, fileType = null) {
@@ -515,15 +529,12 @@ const App = {
             document.getElementById('crm-notes').value = t.agent_notes || '';
 
             agentApp.activeAgents = await agentAPI.getActiveAgents(); agentApp.populateTransferDropdowns();
-            
             if (t.customers?.email) agentApp.loadCustomerHistory(t.customers.email); if (t.customer_id) agentApp.loadCustomerOrders(t.customer_id);
 
             const msgs = await agentAPI.getMessages(id);
             if (agentApp.messageSub) agentApp.messageSub.unsubscribe();
 
-            if (Translator.currentLang !== 'pt') {
-                for (let m of msgs) { if (m.sender_type === 'customer') m.content = await Translator.translateDynamic(m.content); }
-            }
+            if (Translator.currentLang !== 'pt') { for (let m of msgs) { if (m.sender_type === 'customer') m.content = await Translator.translateDynamic(m.content); } }
 
             if (isEmail) {
                 document.getElementById('chat-mode-container').classList.add('hidden-view'); document.getElementById('email-mode-container').classList.remove('hidden-view');
@@ -574,7 +585,6 @@ const App = {
         if (!confirm("Encerrar atendimento atual?")) return;
         try { await agentAPI.closeTicket(agentApp.activeTicketId, tag1, tag2, notes); agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue'); Orchestrator.findAndClaimNext(); } catch (error) { alert("Erro ao fechar."); }
     },
-
     switchTab(tabId) { ['info', 'history', 'orders'].forEach(t => { document.getElementById(`view-crm-${t}`).classList.add('hidden-view'); document.getElementById(`tab-${t}`).classList.remove('border-blue-600', 'text-blue-600'); }); document.getElementById(`view-crm-${tabId.replace('crm-', '')}`).classList.remove('hidden-view'); document.getElementById(tabId.replace('crm-', 'tab-')).classList.add('border-blue-600', 'text-blue-600'); },
     populateTransferDropdowns() {
         const subSelect = document.getElementById('transfer-subject'); subSelect.innerHTML = '<option value="">➜ Para Fila (Assunto)...</option>'; agentApp.allSubjects.forEach(s => subSelect.innerHTML += `<option value="${s.id}">${s.label}</option>`);
@@ -584,61 +594,6 @@ const App = {
         const newSub = document.getElementById('transfer-subject').value; const newAg = document.getElementById('transfer-agent').value; const notes = document.getElementById('crm-notes').value.trim();
         if (!newSub && !newAg) return;
         if (confirm("Deseja transferir este chamado?")) { try { await agentAPI.transferTicket(agentApp.activeTicketId, newSub, newAg, notes); agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue'); Orchestrator.findAndClaimNext(); } catch (e) { alert("Erro na transferência."); } }
-    },
-
-    async loadSettingsUI() {
-        try {
-            const cfg = await agentAPI.getSystemSettings();
-            const qActive = document.getElementById('cfg-queue-active');
-            if (qActive) {
-                qActive.checked = cfg.is_queue_warning_active || false;
-                document.getElementById('cfg-queue-min').value = cfg.queue_warning_min || 2;
-                document.getElementById('cfg-queue-macro').value = cfg.queue_warning_macro || '';
-            }
-            document.getElementById('cfg-chat-warn-time').value = cfg.chat_warning_min || 8; 
-            document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
-            document.getElementById('cfg-email-warn-time').value = cfg.email_warning_hr || 24; 
-            document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 48;
-            document.getElementById('cfg-macro-warn-chat').value = cfg.warning_macro_chat || ''; 
-            document.getElementById('cfg-macro-warn-email').value = cfg.warning_macro_email || ''; 
-            document.getElementById('cfg-macro').value = cfg.closure_macro || '';
-            
-            agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags();
-        } catch(e) { console.error("Erro UI de configurações", e); }
-    },
-
-    renderSettingsTags() {
-        const container = document.getElementById('settings-tags-list'); if (!container) return;
-        let html = '';
-        agentApp.allSubjects.forEach(sub => {
-            const subsubs = agentApp.allSubsubjects.filter(ss => ss.subject_id === sub.id);
-            let subHtml = subsubs.map(ss => `<span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">${ss.label} <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500 transition-colors flex items-center"><span class="material-symbols-outlined text-[12px]">close</span></button></span>`).join('');
-            html += `<div class="border border-slate-200 rounded-xl p-5 bg-white relative z-20 shadow-sm"><div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3"><span class="font-black text-slate-800 text-base flex items-center gap-2"><span class="material-symbols-outlined text-slate-400">label</span> ${sub.label}</span><button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-xs text-red-500 font-bold flex items-center gap-1 hover:underline bg-red-50 px-2 py-1 rounded"><span class="material-symbols-outlined text-[14px]">delete</span> Excluir Motivo</button></div><div class="flex flex-wrap gap-2 mb-4">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div><div class="flex gap-2"><input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-600" placeholder="Digite um novo Submotivo (Tag 2)..."><button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 rounded-lg text-xs font-bold transition-colors">Adicionar Submotivo</button></div></div>`;
-        });
-        container.innerHTML = html;
-    },
-
-    async addTag1() { const input = document.getElementById('new-tag1-input'); const val = input.value.trim(); if(!val) return; try { await agentAPI.createSubject(val); input.value = ''; agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro."); } },
-    async addTag2(subjectId) { const input = document.getElementById(`new-tag2-${subjectId}`); const val = input.value.trim(); if(!val) return; try { await agentAPI.createSubsubject(subjectId, val); input.value = ''; agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro."); } },
-    async toggleSubject(id, isActive) { if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal e todos os submotivos vinculados a ele?")) return; try { await agentAPI.toggleSubject(id, isActive); agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir."); } },
-    async toggleSubsubject(id, isActive) { try { await agentAPI.toggleSubsubject(id, isActive); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir submotivo."); } },
-    insertMacroVar(variable, targetId = 'cfg-macro') { const txt = document.getElementById(targetId); if(!txt) return; const start = txt.selectionStart; const end = txt.selectionEnd; txt.value = txt.value.substring(0, start) + variable + txt.value.substring(end); txt.focus(); },
-
-    async saveSettings() {
-        const btn = document.getElementById('btn-save-cfg'); const origHtml = btn.innerHTML; btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
-        try {
-            const chatWarn = parseInt(document.getElementById('cfg-chat-warn-time').value) || 8; const chatClose = parseInt(document.getElementById('cfg-chat-time').value) || 10;
-            const emailWarn = parseInt(document.getElementById('cfg-email-warn-time').value) || 24; const emailClose = parseInt(document.getElementById('cfg-email-time').value) || 48;
-
-            if (chatWarn >= chatClose) { alert("ERRO: No Canal WEB, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
-            if (emailWarn >= emailClose) { alert("ERRO: No Canal E-mail, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
-
-            const payload = { chat_warning_min: chatWarn, chat_timeout_min: chatClose, email_warning_hr: emailWarn, email_timeout_hr: emailClose, warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, warning_macro_email: document.getElementById('cfg-macro-warn-email').value, closure_macro: document.getElementById('cfg-macro').value };
-            const qActive = document.getElementById('cfg-queue-active');
-            if (qActive) { payload.is_queue_warning_active = qActive.checked; payload.queue_warning_min = parseInt(document.getElementById('cfg-queue-min').value) || 2; payload.queue_warning_macro = document.getElementById('cfg-queue-macro').value; }
-            
-            await agentAPI.updateSystemSettings(payload); agentApp.systemSettings = Object.assign({}, agentApp.systemSettings, payload); alert("Configurações atualizadas com sucesso!");
-        } catch (e) { alert("Erro ao salvar as configurações."); } finally { btn.innerHTML = origHtml; }
     },
 
     async loadTeam() {
@@ -696,7 +651,7 @@ const App = {
     async openInternalChat(targetId = null, targetName = null) {
         if (targetId) { agentApp.internalChatTarget = targetId; document.getElementById('internal-chat-target-name').innerText = targetName; }
         document.getElementById('btn-internal-alert').classList.add('hidden-view'); document.getElementById('modal-internal-chat').classList.remove('hidden-view');
-        const content = document.getElementById('internal-chat-content'); content.innerHTML = '<div class="text-center text-slate-400 text-xs font-bold">Carregando...</div>';
+        const content = document.getElementById('internal-chat-content'); content.innerHTML = '<div class="text-center text-slate-400 text-xs font-bold">Carregando o histórico...</div>';
         try {
             if (!agentApp.internalChatTarget) throw new Error("ID não fornecido.");
             const msgs = await agentAPI.getInternalMessages(agentApp.currentUser.id, agentApp.internalChatTarget);
@@ -719,7 +674,7 @@ const App = {
             if(hist.length === 0) { container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; return; }
             container.innerHTML = hist.map(h => {
                 const tagsHtml = h.agent_tag1 ? `<div class="mt-2 text-[10px]"><span class="bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold">${h.agent_tag1}</span> <span class="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold">${h.agent_tag2 || ''}</span></div><div class="text-[10px] text-slate-500 mt-1 italic bg-slate-50 p-1.5 rounded">"${h.agent_notes || ''}"</div>` : '';
-                return `<div class="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-start transition-all hover:border-blue-300 relative z-20"><div class="flex-1"><div class="flex justify-between items-center w-full"><div class="text-[10px] font-black text-blue-600">HZ-${h.protocol_number}</div><div class="text-[9px] font-bold text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><div class="text-[11px] font-bold text-slate-700 mt-1 truncate max-w-[200px]">Original: ${h.ticket_subjects?.label || 'Sem Assunto'}</div>${tagsHtml}</div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="ml-2 w-8 h-8 flex shrink-0 items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`
+                return `<div class="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-start transition-all hover:border-blue-300 relative z-20"><div class="flex-1"><div class="flex justify-between items-center w-full"><div class="text-[10px] font-black text-blue-600">HZ-${h.protocol_number}</div><div class="text-[9px] font-bold text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><div class="text-[11px] font-bold text-slate-700 mt-1 truncate max-w-[200px]">Original: ${h.ticket_subjects?.label || 'Sem Assunto'}</div>${tagsHtml}</div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa Completa" class="ml-2 w-8 h-8 flex shrink-0 items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`
             }).join('');
         } catch (e) {}
     },
