@@ -38,7 +38,7 @@ export const agentAPI = {
 
     async getPendingTickets() {
         const { data, error } = await supabase.from('tickets')
-            .select(`id, protocol_number, channel, created_at, assigned_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
+            .select(`id, protocol_number, channel, created_at, assigned_at, first_reply_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
             .in('status', ['open', 'in_progress'])
             .order('created_at', { ascending: true });
         if (error) throw error;
@@ -133,12 +133,15 @@ export const agentAPI = {
         const { error: msgErr } = await supabase.from('messages').insert([payload]);
         if (msgErr) throw msgErr;
         
-        // Zera a flag de Alerta sempre que o Agente ou Cliente respondem ativamente
-        const { error: tkErr } = await supabase.from('tickets').update({ last_sender: 'agent', last_interaction_at: new Date(), has_warning_sent: false }).eq('id', ticketId);
+        // Verifica se é a primeira resposta para mudar a cor da bolha
+        const { data: ticket } = await supabase.from('tickets').select('first_reply_at').eq('id', ticketId).single();
+        const updates = { last_sender: 'agent', last_interaction_at: new Date(), has_warning_sent: false };
+        if (ticket && !ticket.first_reply_at) { updates.first_reply_at = new Date(); }
+
+        const { error: tkErr } = await supabase.from('tickets').update(updates).eq('id', ticketId);
         if (tkErr) throw tkErr;
     },
 
-    // FUNÇÃO NOVA: Dispara aviso sem mudar o status de última mensagem (para o timer continuar)
     async sendSystemMessage(ticketId, content, markWarning = false) {
         const payload = { ticket_id: ticketId, sender_type: 'system', content: content };
         const { error: msgErr } = await supabase.from('messages').insert([payload]);

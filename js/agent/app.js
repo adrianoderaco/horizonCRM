@@ -129,30 +129,19 @@ const App = {
 
                 agentAPI.subscribeToQueue(async () => {
                     await this.loadQueue();
-                    if (this.currentUser && this.currentUser.status === 'online') {
-                        Orchestrator.findAndClaimNext();
-                    }
-                    if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) {
-                        await this.renderDashboard();
-                    }
-                    if (document.getElementById('sec-team') && !document.getElementById('sec-team').classList.contains('hidden-view')) {
-                        await this.loadTeam();
-                    }
+                    if (this.currentUser && this.currentUser.status === 'online') Orchestrator.findAndClaimNext();
+                    if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) await this.renderDashboard();
+                    if (document.getElementById('sec-team') && !document.getElementById('sec-team').classList.contains('hidden-view')) await this.loadTeam();
                 });
 
                 agentAPI.subscribeToSettings((newCfg) => {
                     this.systemSettings = newCfg;
                     Orchestrator.updateSettings(newCfg);
-                    if (profile.role === 'gestor') {
-                        const tg = document.getElementById('toggle-routing');
-                        if (tg) tg.checked = newCfg.is_orchestrator_active === true;
-                    }
+                    if (profile.role === 'gestor') { const tg = document.getElementById('toggle-routing'); if (tg) tg.checked = newCfg.is_orchestrator_active === true; }
                 });
 
-                agentAPI.subscribeToProfiles(async () => {
-                    if (!document.getElementById('sec-team').classList.contains('hidden-view')) {
-                        await this.loadTeam();
-                    }
+                agentAPI.subscribeToProfiles(async () => { 
+                    if (!document.getElementById('sec-team').classList.contains('hidden-view')) await this.loadTeam(); 
                 });
 
                 agentAPI.subscribeToMyProfile(this.currentUser.id, async (newProfile) => {
@@ -166,7 +155,7 @@ const App = {
                             this.activeTicketId = null;
                             document.getElementById('menu-chat').classList.add('hidden-view');
                             this.navigate('queue');
-                            alert("Atenção: Seu status foi alterado.");
+                            alert("Atenção: Seu status foi alterado para " + newProfile.status.toUpperCase() + " pelo Gestor.");
                             await this.loadQueue();
                         } else {
                             Orchestrator.setStatus(true);
@@ -186,9 +175,7 @@ const App = {
                                 alertBtn.dataset.senderName = sender?.full_name || 'Equipe';
                             } catch(e) { console.error(e); }
                         }
-                    } else {
-                        this.renderInternalMsg(msg, false);
-                    }
+                    } else { this.renderInternalMsg(msg, false); }
                 });
 
             } catch (error) { 
@@ -199,139 +186,73 @@ const App = {
         });
 
         document.getElementById('agent-chat-form')?.addEventListener('submit', async (e) => {
-            e.preventDefault(); 
-            const input = document.getElementById('chat-input'); 
-            const text = input.value.trim();
+            e.preventDefault(); const input = document.getElementById('chat-input'); const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
-            
-            this.renderMsg(text, 'agent'); 
-            input.value = '';
-            
-            try { 
-                await agentAPI.sendMessage(this.activeTicketId, text); 
-                this.updateLocalBubble();
-                Orchestrator.findAndClaimNext(); 
-            } catch(err) { 
-                alert("Erro ao enviar mensagem."); 
-            }
+            this.renderMsg(text, 'agent'); input.value = '';
+            try { await agentAPI.sendMessage(this.activeTicketId, text); this.updateLocalBubble(); Orchestrator.findAndClaimNext(); } catch(err) { alert("Erro ao enviar."); }
         });
 
         document.getElementById('agent-email-form')?.addEventListener('submit', async (e) => {
-            e.preventDefault(); 
-            const input = document.getElementById('email-input'); 
-            const text = input.value.trim();
+            e.preventDefault(); const input = document.getElementById('email-input'); const text = input.value.trim();
             if(!text || !this.activeTicketId) return;
-            
             if(!confirm("Prosseguir com a resposta ao cliente? O atendimento sairá da sua tela e retornará à fila em caso de resposta do cliente.")) return;
             
-            const btn = document.getElementById('btn-send-email'); 
-            const origHTML = btn.innerHTML;
-            btn.innerHTML = `<span class="material-symbols-outlined animate-spin text-[18px]">refresh</span> Enviando...`; 
-            btn.disabled = true;
-            
+            const btn = document.getElementById('btn-send-email'); const origHTML = btn.innerHTML;
+            btn.innerHTML = `<span class="material-symbols-outlined animate-spin text-[18px]">refresh</span> Enviando...`; btn.disabled = true;
             try {
-                await agentAPI.sendMessage(this.activeTicketId, text); 
-                input.value = ''; 
-                
+                await agentAPI.sendMessage(this.activeTicketId, text); input.value = ''; 
                 await agentAPI.closeTicket(this.activeTicketId, 'E-mail respondido', '', 'Aguardando cliente');
-                
                 this.activeTickets = this.activeTickets.filter(t => t.id !== this.activeTicketId);
                 this.activeTicketId = null;
                 document.getElementById('menu-chat').classList.add('hidden-view');
                 this.navigate('queue');
                 await this.loadQueue();
                 Orchestrator.findAndClaimNext();
-
-            } catch(err) { 
-                alert("Erro ao responder o e-mail."); 
-            } finally { 
-                btn.innerHTML = origHTML; 
-                btn.disabled = false; 
-            }
+            } catch(err) { alert("Erro ao responder o e-mail."); } finally { btn.innerHTML = origHTML; btn.disabled = false; }
         });
 
-        document.getElementById('toggle-upload')?.addEventListener('change', (e) => { 
-            this.toggleClientUpload(e.target.checked); 
-        });
-        
+        document.getElementById('toggle-upload')?.addEventListener('change', (e) => { this.toggleClientUpload(e.target.checked); });
         this.setupAgentAttachment('btn-agent-attach', 'agent-file-input'); 
         this.setupAgentAttachment('btn-email-attach', 'email-file-input', true);
-        
-        document.getElementById('agent-status-select')?.addEventListener('change', (e) => { 
-            this.updateMyStatus(e.target.value); 
-        });
+        document.getElementById('agent-status-select')?.addEventListener('change', (e) => { this.updateMyStatus(e.target.value); });
         
         document.getElementById('internal-chat-form')?.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('internal-chat-input'); 
-            const text = input.value.trim();
+            e.preventDefault(); const input = document.getElementById('internal-chat-input'); const text = input.value.trim();
             if (!text || !this.internalChatTarget) return;
-            
             try {
                 await agentAPI.sendInternalMessage(this.currentUser.id, this.internalChatTarget, text);
                 this.renderInternalMsg({ content: text }, true);
                 input.value = '';
-            } catch (err) { 
-                alert("Erro ao enviar mensagem interna."); 
-            }
+            } catch (err) { alert("Erro ao enviar mensagem interna."); }
         });
     },
 
     async toggleGlobalOrchestrator(isActive) {
-        try {
-            await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive });
-            console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`);
-        } catch (e) {
-            document.getElementById('toggle-routing').checked = !isActive;
-            alert("Erro ao alterar Orquestrador Global. Verifique sua conexão.");
-        }
+        try { await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive }); console.log(`[Sistema] Orquestrador Global alterado para: ${isActive}`); } catch (e) { document.getElementById('toggle-routing').checked = !isActive; alert("Erro ao alterar Orquestrador Global."); }
     },
 
     setupAgentAttachment(btnId, inputId, isEmail = false) {
-        const btn = document.getElementById(btnId); 
-        const input = document.getElementById(inputId);
-        
+        const btn = document.getElementById(btnId); const input = document.getElementById(inputId);
         if (btn && input) {
             btn.addEventListener('click', () => input.click());
             input.addEventListener('change', async (e) => {
-                const file = e.target.files[0]; 
-                if(!file || !this.activeTicketId) return;
-                
+                const file = e.target.files[0]; if(!file || !this.activeTicketId) return;
                 const sendBtnId = isEmail ? 'btn-send-email' : 'btn-send-chat';
-                const btnSend = document.getElementById(sendBtnId); 
-                const origText = btnSend.innerHTML;
-                btnSend.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span>`; 
-                btnSend.disabled = true;
-                
+                const btnSend = document.getElementById(sendBtnId); const origText = btnSend.innerHTML;
+                btnSend.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span>`; btnSend.disabled = true;
                 try {
                     const fileData = await agentAPI.uploadFile(file);
                     await agentAPI.sendMessage(this.activeTicketId, "📎 Anexo enviado pelo Analista:", fileData);
                     this.updateLocalBubble();
-                    
-                    if (isEmail) { 
-                        const msgs = await agentAPI.getMessages(this.activeTicketId); 
-                        this.renderEmailThread(this.currentTicket, msgs); 
-                    } else { 
-                        this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); 
-                    }
-                } catch(err) { 
-                    alert("Erro no upload do arquivo."); 
-                } finally { 
-                    btnSend.innerHTML = origText; 
-                    btnSend.disabled = false; 
-                    e.target.value = ''; 
-                }
+                    if (isEmail) { const msgs = await agentAPI.getMessages(this.activeTicketId); this.renderEmailThread(this.currentTicket, msgs); } else { this.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); }
+                } catch(err) { alert("Erro no upload."); } finally { btnSend.innerHTML = origText; btnSend.disabled = false; e.target.value = ''; }
             });
         }
     },
 
     updateLocalBubble() {
         const tkIndex = this.activeTickets.findIndex(t => t.id === this.activeTicketId);
-        if (tkIndex > -1) { 
-            this.activeTickets[tkIndex].last_sender = 'agent'; 
-            this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString(); 
-            this.renderBubbles(); 
-        }
+        if (tkIndex > -1) { this.activeTickets[tkIndex].last_sender = 'agent'; this.activeTickets[tkIndex].last_interaction_at = new Date().toISOString(); this.renderBubbles(); }
     },
 
     async updateMyStatus(newStatus) {
@@ -344,84 +265,45 @@ const App = {
                 await agentAPI.releaseMyTickets(this.currentUser.id);
                 Orchestrator.setStatus(false);
                 alert(`Status alterado para ${newStatus.toUpperCase()}. Seus atendimentos retornaram para a fila.`);
-                
-                this.activeTicketId = null;
-                document.getElementById('menu-chat').classList.add('hidden-view');
-                this.navigate('queue');
-                await this.loadQueue();
-            } else {
-                Orchestrator.setStatus(true);
-                await this.loadQueue();
-            }
-        } catch (e) { 
-            alert("Erro ao mudar o status."); 
-        }
+                this.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view');
+                this.navigate('queue'); await this.loadQueue();
+            } else { Orchestrator.setStatus(true); await this.loadQueue(); }
+        } catch (e) { alert("Erro ao mudar o status."); }
     },
 
     async forceAgentStatus(agentId, newStatus) {
-        if (!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
-        try {
-            await agentAPI.changeStatus(agentId, newStatus);
-            if (newStatus !== 'online') {
-                await agentAPI.releaseMyTickets(agentId);
-            }
-            await this.loadTeam();
-        } catch(e) { 
-            alert("Erro ao alterar status do agente."); 
-        }
+        if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
+        try { await agentAPI.changeStatus(agentId, newStatus); if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId); await this.loadTeam(); } catch(e) { alert("Erro ao alterar status do agente."); }
     },
 
     async updateAgentLimits(agentId, maxChats, maxEmails) {
-        try {
-            let c = maxChats === "" ? null : maxChats;
-            let e = maxEmails === "" ? null : maxEmails;
-            await agentAPI.updateAgentLimits(agentId, c, e);
-        } catch (e) {
-            alert("Erro ao atualizar limites do agente.");
-        }
+        try { let c = maxChats === "" ? null : maxChats; let e = maxEmails === "" ? null : maxEmails; await agentAPI.updateAgentLimits(agentId, c, e); } catch (e) { alert("Erro ao atualizar limites do agente."); }
     },
     
     async updateAgentGroup(agentId, groupName) {
-        try {
-            await agentAPI.updateAgentGroup(agentId, groupName);
-        } catch (e) {
-            alert("Erro ao atualizar equipe do agente.");
-        }
+        try { await agentAPI.updateAgentGroup(agentId, groupName); } catch (e) { alert("Erro ao atualizar equipe do agente."); }
     },
 
     applyWatermark(name) {
-        const wm = document.createElement('div');
-        wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none';
-        wm.style.zIndex = '99999'; 
-        let spans = '';
-        for(let i=0; i<150; i++) {
-            spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
-        }
-        wm.innerHTML = spans; 
-        document.body.appendChild(wm);
+        const wm = document.createElement('div'); wm.className = 'fixed inset-0 pointer-events-none flex flex-wrap overflow-hidden justify-center items-center select-none'; wm.style.zIndex = '99999'; 
+        let spans = ''; for(let i=0; i<150; i++) spans += `<span class="transform -rotate-45 text-2xl font-black text-slate-900 m-8 opacity-[0.03]">${name}</span>`;
+        wm.innerHTML = spans; document.body.appendChild(wm);
     },
 
     async logout() {
         if(confirm("Deseja sair? Seus atendimentos em andamento voltarão para a fila!")) {
-            try { 
-                await agentAPI.releaseMyTickets(this.currentUser.id); 
-                await agentAPI.changeStatus(this.currentUser.id, 'offline'); 
-                await supabase.auth.signOut(); 
-                location.reload(); 
-            } catch(e) { 
-                alert("Erro ao deslogar."); 
-            }
+            try { await agentAPI.releaseMyTickets(this.currentUser.id); await agentAPI.changeStatus(this.currentUser.id, 'offline'); await supabase.auth.signOut(); location.reload(); } catch(e) { alert("Erro ao deslogar."); }
         }
     },
 
     // ===============================================
-    // TIMERS E SLA (Lógica Matemática Consertada)
+    // TIMERS E SLA (Lógica Matemática Consertada e Tagueamento Automático)
     // ===============================================
     startLiveTimers() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         
         this.timerInterval = setInterval(() => {
-            // Atualiza os relógios visuais na tela do Agente/Gestor
+            // Relógios na interface do usuário
             document.querySelectorAll('.live-timer').forEach(el => {
                 const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(el.dataset.time).getTime()) / 1000));
                 const h = String(Math.floor(diffSeconds / 3600)).padStart(2, '0'); 
@@ -436,27 +318,20 @@ const App = {
                 }
             });
 
-            // Lógica de SLA e Fechamento Automático
+            // Motor Invisível de SLA
             if (this.systemSettings && this.currentUser) {
-                // Tempos de Alerta
                 const chatWarnSecs = (this.systemSettings.chat_warning_min || 8) * 60;
                 const emailWarnSecs = (this.systemSettings.email_warning_hr || 24) * 3600;
                 
-                // Tempos de Fechamento (SOMA do Alerta + Tempo Extra)
                 const chatCloseSecs = (this.systemSettings.chat_timeout_min || 10) * 60;
                 const emailCloseSecs = (this.systemSettings.email_timeout_hr || 48) * 3600;
-                
-                const totalChatCloseSecs = chatWarnSecs + chatCloseSecs;
-                const totalEmailCloseSecs = emailWarnSecs + emailCloseSecs;
 
                 this.activeTickets.forEach(t => {
-                    // A regra de fechamento por ociosidade só age nos tickets DESTE agente
                     if (t.agent_id !== this.currentUser.id) return;
                     
                     const lastTime = new Date(t.last_interaction_at || t.created_at).getTime();
                     const diffSeconds = Math.floor((Date.now() - lastTime) / 1000);
                     
-                    // Tratamento visual das bolhas (esmaecer se estiver ocioso)
                     const el = document.getElementById(`bubble-${t.id}`);
                     if (el) {
                         if (t.last_sender === 'customer') {
@@ -474,28 +349,25 @@ const App = {
                         }
                     }
 
-                    // AÇÃO DE SLA: Se o Agente foi o último a falar (está aguardando o cliente)
+                    // AÇÃO DE SLA: Somente se o Agente foi o último a falar (Inatividade do Cliente)
                     if (t.last_sender === 'agent' && !this.closingTickets.has(t.id)) {
                         
-                        // FASE 1: O ALERTA (Ainda não enviou?)
-                        if (!t.has_warning_sent) {
-                            const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
-                            const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
-                            
-                            if (isWebWarn || isEmailWarn) {
-                                t.has_warning_sent = true; // Impede loop imediato
-                                this.executeWarning(t);
-                            }
-                        } 
-                        // FASE 2: O ENCERRAMENTO (Já mandou alerta e o tempo continuou correndo?)
-                        else {
-                            const isWebClose = t.channel === 'web' && diffSeconds >= totalChatCloseSecs;
-                            const isEmailClose = t.channel === 'email' && diffSeconds >= totalEmailCloseSecs;
+                        const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
+                        const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
+                        
+                        const isWebClose = t.channel === 'web' && diffSeconds >= chatCloseSecs;
+                        const isEmailClose = t.channel === 'email' && diffSeconds >= emailCloseSecs;
 
-                            if (isWebClose || isEmailClose) {
-                                this.closingTickets.add(t.id);
-                                this.executeAutoClose(t);
-                            }
+                        // 1. FASE DE ALERTA: Verifica se atingiu o tempo de aviso
+                        if (!t.has_warning_sent && (isWebWarn || isEmailWarn)) {
+                            t.has_warning_sent = true; // Trava local para não engasgar repetindo
+                            this.executeWarning(t);
+                        } 
+                        
+                        // 2. FASE DE ENCERRAMENTO: Verifica se atingiu o limite de fechamento
+                        if (isWebClose || isEmailClose) {
+                            this.closingTickets.add(t.id); // Trava local de fechamento
+                            this.executeAutoClose(t);
                         }
                     }
                 });
@@ -513,14 +385,15 @@ const App = {
             msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
 
+            // Importante: sendSystemMessage envia a mensagem mas NÃO altera o last_interaction_at
+            // Isso garante que o relógio continue correndo para o fechamento
             await agentAPI.sendSystemMessage(ticket.id, msg, true);
             
-            // Se o agente estiver olhando pra esse chat agora, mostra a mensagem na tela em tempo real
             if (this.activeTicketId === ticket.id) {
                 this.renderMsg(msg, 'system');
             }
         } catch(e) { 
-            console.error("Falha ao enviar alerta:", e); 
+            console.error("Falha ao enviar alerta SLA:", e); 
         }
     },
 
@@ -534,13 +407,12 @@ const App = {
             msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
 
-            // Envia a mensagem final como Sistema
+            // Mensagem de despedida pelo sistema
             await agentAPI.sendSystemMessage(ticket.id, msg, false);
             
-            // Fecha forçadamente usando as tags de SLA
-            await agentAPI.closeTicket(ticket.id, 'SLA Automático', 'Inatividade', 'Encerrado pelo sistema.');
+            // FECHAMENTO FORÇADO COM TAGS AUTOMÁTICAS (Tag1: Outros, Tag2: Abandono)
+            await agentAPI.closeTicket(ticket.id, 'Outros', 'Abandono', 'Encerrado pelo sistema (Falta de interação do cliente).');
             
-            // Tira da tela do agente
             this.activeTickets = this.activeTickets.filter(t => t.id !== ticket.id);
             
             if (this.activeTicketId === ticket.id) {
@@ -551,7 +423,7 @@ const App = {
             
             await this.loadQueue();
         } catch(e) { 
-            console.error("Falha na macro de encerramento:", e); 
+            console.error("Falha na macro de encerramento SLA:", e); 
         } finally { 
             this.closingTickets.delete(ticket.id); 
         }
@@ -708,24 +580,42 @@ const App = {
 
     async saveSettings() {
         const btn = document.getElementById('btn-save-cfg');
+        const origHtml = btn.innerHTML;
         btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
+        
         try {
+            const chatWarn = parseInt(document.getElementById('cfg-chat-warn-time').value) || 8;
+            const chatClose = parseInt(document.getElementById('cfg-chat-time').value) || 10;
+            const emailWarn = parseInt(document.getElementById('cfg-email-warn-time').value) || 24;
+            const emailClose = parseInt(document.getElementById('cfg-email-time').value) || 48;
+
+            // VALIDAÇÃO DE SEGURANÇA: Alerta não pode ser maior/igual ao Encerramento
+            if (chatWarn >= chatClose) {
+                alert("ERRO: No Canal WEB (Chat), o tempo de Alerta deve ser MENOR que o tempo de Fechar.");
+                return;
+            }
+            if (emailWarn >= emailClose) {
+                alert("ERRO: No Canal E-mail, o tempo de Alerta deve ser MENOR que o tempo de Fechar.");
+                return;
+            }
+
             const payload = { 
-                chat_warning_min: parseInt(document.getElementById('cfg-chat-warn-time').value) || 8, 
-                chat_timeout_min: parseInt(document.getElementById('cfg-chat-time').value) || 10, 
-                email_warning_hr: parseInt(document.getElementById('cfg-email-warn-time').value) || 24, 
-                email_timeout_hr: parseInt(document.getElementById('cfg-email-time').value) || 48, 
+                chat_warning_min: chatWarn, 
+                chat_timeout_min: chatClose, 
+                email_warning_hr: emailWarn, 
+                email_timeout_hr: emailClose, 
                 warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, 
                 warning_macro_email: document.getElementById('cfg-macro-warn-email').value, 
                 closure_macro: document.getElementById('cfg-macro').value 
             };
+            
             await agentAPI.updateSystemSettings(payload); 
             this.systemSettings = Object.assign({}, this.systemSettings, payload);
             alert("Configurações atualizadas com sucesso!");
         } catch (e) { 
             alert("Erro ao salvar as configurações."); 
         } finally { 
-            btn.innerHTML = `<span class="material-symbols-outlined">save</span> Salvar SLAs e Macros`; 
+            btn.innerHTML = origHtml; 
         }
     },
 
@@ -923,7 +813,7 @@ const App = {
             if (t.status === 'open' || !t.agent_id) {
                 const myCount = this.activeTickets.filter(tk => tk.status === 'in_progress' && tk.agent_id === this.currentUser.id).length;
                 if (myCount >= 10) { 
-                    alert("O limite máximo simultâneo foi alcançado!"); 
+                    alert("O limite máximo de atendimentos simultâneos foi alcançado!"); 
                     this.navigate('queue'); 
                     return; 
                 }
@@ -952,6 +842,7 @@ const App = {
             document.getElementById('crm-name').innerText = t.customers?.full_name || 'Desconhecido'; 
             document.getElementById('crm-email').innerText = t.customers?.email || 'Sem e-mail'; 
             
+            // TAGS
             document.getElementById('crm-customer-tag').innerText = t.ticket_subjects?.label || 'Sem assunto';
             this.allSubjects = await agentAPI.getAllSubjects();
             this.allSubsubjects = await agentAPI.getAllSubsubjects();
@@ -1077,7 +968,7 @@ const App = {
         const notes = document.getElementById('crm-notes').value.trim();
 
         if (!tag1 || !tag2 || !notes) {
-            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações do Atendimento.");
+            alert("Para encerrar o atendimento, é obrigatório preencher o Motivo, o Submotivo e as Observações.");
             return;
         }
 
@@ -1166,9 +1057,6 @@ const App = {
         } catch (e) { console.error(e); }
     },
 
-    // ==========================================
-    // MODAL DE HISTÓRICO DE TICKET
-    // ==========================================
     async viewPastChat(ticketId, protocolNumber) {
         try {
             const ticket = await agentAPI.getTicketDetails(ticketId); 
@@ -1262,7 +1150,7 @@ const App = {
     },
 
     // ==========================================
-    // DASHBOARD & RELATÓRIOS BLINDADOS
+    // DASHBOARD & RELATÓRIOS 
     // ==========================================
     async renderDashboard() {
         const btnFiltro = document.getElementById('btn-filter-dash');
@@ -1287,8 +1175,6 @@ const App = {
                 uniqueGroups.forEach(g => groupSelect.innerHTML += `<option value="${g}">${g}</option>`);
             }
 
-            const { data: orders } = await supabase.from('orders').select('amount'); 
-            
             let tickets = this.dashboardTickets;
             
             if (groupFilter) {
@@ -1306,7 +1192,6 @@ const App = {
             
             const npsTickets = closedTickets.filter(t => t.rating !== null); 
             const avgNps = npsTickets.length > 0 ? (npsTickets.reduce((acc, t) => acc + t.rating, 0) / npsTickets.length).toFixed(1) : "0.0"; 
-            const totalSales = orders ? orders.reduce((acc, o) => acc + parseFloat(o.amount || 0), 0) : 0; 
             
             let totalWaitMs = 0;
             let waitCount = 0;
@@ -1314,13 +1199,15 @@ const App = {
             let handleCount = 0;
 
             closedTickets.forEach(t => {
-                if (t.assigned_at) {
-                    const waitMs = new Date(t.assigned_at) - new Date(t.created_at);
-                    if (waitMs >= 0) { totalWaitMs += waitMs; waitCount++; }
-                    
-                    const handleMs = new Date(t.closed_at) - new Date(t.assigned_at);
-                    if (handleMs >= 0) { totalHandleMs += handleMs; handleCount++; }
-                }
+                const created = new Date(t.created_at);
+                const closed = new Date(t.closed_at);
+                const assigned = t.assigned_at ? new Date(t.assigned_at) : created;
+
+                const waitMs = assigned - created;
+                if (waitMs >= 0) { totalWaitMs += waitMs; waitCount++; }
+                
+                const handleMs = closed - assigned;
+                if (handleMs >= 0) { totalHandleMs += handleMs; handleCount++; }
             });
 
             const formatTime = (ms) => {
@@ -1363,10 +1250,12 @@ const App = {
         const calcMetrics = (arr) => {
             let tma = 0, tme = 0;
             arr.forEach(t => {
-                if(t.assigned_at) {
-                    tme += (new Date(t.assigned_at) - new Date(t.created_at));
-                    tma += (new Date(t.closed_at) - new Date(t.assigned_at));
-                }
+                const created = new Date(t.created_at);
+                const closed = new Date(t.closed_at);
+                const assigned = t.assigned_at ? new Date(t.assigned_at) : created;
+                
+                tme += (assigned - created);
+                tma += (closed - assigned);
             });
             return {
                 vol: arr.length,
@@ -1560,7 +1449,9 @@ const App = {
         document.body.removeChild(link);
     },
 
+    // ==========================================
     // GESTÃO DE EQUIPE
+    // ==========================================
     async loadTeam() {
         try {
             const team = await agentAPI.getTeamProfiles(); 
