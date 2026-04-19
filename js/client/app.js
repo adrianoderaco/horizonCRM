@@ -6,6 +6,7 @@ const ClientApp = {
     messageSub: null,
     currentLang: 'pt',
     hasRated: false,
+    allSubjects: [], // Guarda os assuntos originais para traduzir dinamicamente
 
     // Dicionário Estático da Tela do Cliente
     i18n: {
@@ -68,9 +69,9 @@ const ClientApp = {
     async init() {
         window.clientApp = this;
         
-        // Listener de Idioma
-        document.getElementById('client-language-select')?.addEventListener('change', (e) => {
-            this.setLanguage(e.target.value);
+        // Listener de Idioma (Agora com await para dar tempo de traduzir os motivos)
+        document.getElementById('client-language-select')?.addEventListener('change', async (e) => {
+            await this.setLanguage(e.target.value);
         });
 
         await this.loadSubjects();
@@ -119,11 +120,12 @@ const ClientApp = {
         this.setupRatingStars();
     },
 
-    setLanguage(lang) {
+    async setLanguage(lang) {
         this.currentLang = lang;
         const dict = this.i18n[lang];
         if (!dict) return;
 
+        // Traduz os textos fixos da tela
         for (const [id, text] of Object.entries(dict)) {
             const el = document.getElementById(id);
             if (el) {
@@ -131,6 +133,9 @@ const ClientApp = {
                 else el.innerText = text;
             }
         }
+        
+        // Refaz a lista de assuntos traduzida
+        await this.renderSubjects();
         
         // Força a recarga da tela de chat para traduzir mensagens recebidas
         if (this.ticketId) {
@@ -151,13 +156,28 @@ const ClientApp = {
         }
     },
 
+    // Busca os assuntos do banco apenas uma vez e salva na memória
     async loadSubjects() {
         const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
         if (error) return;
+        this.allSubjects = data;
+        await this.renderSubjects();
+    },
+
+    // Renderiza a lista de assuntos e traduz on-the-fly
+    async renderSubjects() {
         const select = document.getElementById('client-subject');
-        data.forEach(sub => {
-            select.innerHTML += `<option value="${sub.id}">${sub.label}</option>`;
-        });
+        if (!select) return;
+
+        const placeholderText = this.i18n[this.currentLang]['lbl-select-topic'] || 'Selecione um assunto...';
+        
+        // Limpa tudo, mas recoloca o placeholder traduzido
+        select.innerHTML = `<option value="" disabled selected id="lbl-select-topic">${placeholderText}</option>`;
+        
+        for (const sub of this.allSubjects) {
+            const translatedLabel = await this.translate(sub.label);
+            select.innerHTML += `<option value="${sub.id}">${translatedLabel}</option>`;
+        }
     },
 
     toggleViewMode() {
@@ -249,7 +269,11 @@ const ClientApp = {
         document.getElementById('view-start').classList.add('hidden-view');
         document.getElementById('view-chat').classList.remove('hidden-view');
         document.getElementById('chat-protocol').innerText = `HZ-${ticket.protocol_number}`;
-        document.getElementById('chat-subject').innerText = ticket.ticket_subjects?.label || '';
+        
+        // Traduz o assunto que fica fixo no topo do chat também
+        this.translate(ticket.ticket_subjects?.label || '').then(res => {
+            document.getElementById('chat-subject').innerText = res;
+        });
     },
 
     async loadChat(ticketId) {
@@ -363,7 +387,7 @@ const ClientApp = {
             try {
                 await supabase.from('tickets').update({ 
                     rating: selectedRating,
-                    rating_comment: comment // Salva o comentário no banco de dados!
+                    rating_comment: comment 
                 }).eq('id', this.ticketId);
                 
                 this.hasRated = true;
