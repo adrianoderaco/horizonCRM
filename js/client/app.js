@@ -1,196 +1,388 @@
-import { clientAPI } from './api.js';
+import { supabase } from '../supabase.js';
 
-const App = {
-    selectedSubject: null, 
-    channel: null, 
+const ClientApp = {
     ticketId: null,
+    customerId: null,
+    messageSub: null,
+    currentLang: 'pt',
+    hasRated: false,
+
+    // Dicionário Estático da Tela do Cliente
+    i18n: {
+        'pt': {
+            'lbl-greeting': 'Como podemos ajudar?',
+            'lbl-subtitle': 'Abra um novo chamado ou acompanhe um atendimento.',
+            'lbl-name': 'Seu Nome',
+            'lbl-email': 'Seu E-mail',
+            'lbl-subject': 'Motivo do Contato',
+            'lbl-select-topic': 'Selecione um assunto...',
+            'lbl-message': 'Mensagem Inicial',
+            'lbl-btn-start': 'Iniciar Atendimento',
+            'btn-toggle-mode': 'Já tem um protocolo? Acompanhe aqui',
+            'lbl-live-support': 'Atendimento Online',
+            'chat-input': 'Digite sua mensagem aqui...',
+            'lbl-rating-title': 'Atendimento Encerrado',
+            'lbl-rating-desc': 'Como você avalia o suporte recebido?',
+            'rating-comment': 'Gostaria de deixar um comentário sobre o atendimento?',
+            'btn-submit-rating': 'Enviar Avaliação',
+            'lbl-rating-skip': 'Pular'
+        },
+        'en': {
+            'lbl-greeting': 'How can we help?',
+            'lbl-subtitle': 'Open a new ticket or track an existing request.',
+            'lbl-name': 'Your Name',
+            'lbl-email': 'Your E-mail',
+            'lbl-subject': 'Contact Reason',
+            'lbl-select-topic': 'Select a topic...',
+            'lbl-message': 'Initial Message',
+            'lbl-btn-start': 'Start Support',
+            'btn-toggle-mode': 'Already have a protocol? Track here',
+            'lbl-live-support': 'Live Support',
+            'chat-input': 'Type your message here...',
+            'lbl-rating-title': 'Ticket Closed',
+            'lbl-rating-desc': 'How would you rate the support provided?',
+            'rating-comment': 'Would you like to leave a comment about your experience?',
+            'btn-submit-rating': 'Submit Rating',
+            'lbl-rating-skip': 'Skip'
+        },
+        'es': {
+            'lbl-greeting': '¿Cómo podemos ayudar?',
+            'lbl-subtitle': 'Abra un nuevo ticket o siga una solicitud existente.',
+            'lbl-name': 'Su Nombre',
+            'lbl-email': 'Su E-mail',
+            'lbl-subject': 'Motivo del Contacto',
+            'lbl-select-topic': 'Seleccione un tema...',
+            'lbl-message': 'Mensaje Inicial',
+            'lbl-btn-start': 'Iniciar Soporte',
+            'btn-toggle-mode': '¿Ya tienes un protocolo? Sigue aquí',
+            'lbl-live-support': 'Soporte en Vivo',
+            'chat-input': 'Escriba su mensaje aquí...',
+            'lbl-rating-title': 'Ticket Cerrado',
+            'lbl-rating-desc': '¿Cómo calificaría el soporte recibido?',
+            'rating-comment': '¿Le gustaría dejar un comentario sobre el servicio?',
+            'btn-submit-rating': 'Enviar Calificación',
+            'lbl-rating-skip': 'Saltar'
+        }
+    },
 
     async init() {
-        window.clientApp = this; 
+        window.clientApp = this;
+        
+        // Listener de Idioma
+        document.getElementById('client-language-select')?.addEventListener('change', (e) => {
+            this.setLanguage(e.target.value);
+        });
+
         await this.loadSubjects();
 
-        document.getElementById('register-form').addEventListener('submit', async (e) => {
+        document.getElementById('ticket-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = e.target.querySelector('button[type="submit"]'); 
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Aguarde...`;
+            const btn = document.getElementById('btn-start');
+            const orig = btn.innerHTML;
+            btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span>`;
             
-            const name = document.getElementById('cust-name').value; 
-            const email = document.getElementById('cust-email').value; 
-            const phone = document.getElementById('cust-phone').value; 
-            const initialMessage = document.getElementById('cust-message').value;
+            const isTracking = document.getElementById('new-ticket-fields').classList.contains('hidden-view');
+            const email = document.getElementById('client-email').value;
 
             try {
-                let customer = await clientAPI.checkCustomer(email);
-                if (!customer) {
-                    customer = await clientAPI.createCustomer({ full_name: name, email: email, phone: phone });
+                if (isTracking) {
+                    await this.trackTicket(email);
+                } else {
+                    await this.createTicket();
                 }
-                
-                const ticket = await clientAPI.createTicket(customer.id, this.selectedSubject, this.channel);
-                this.ticketId = ticket.id;
-                
-                await clientAPI.sendMessage(this.ticketId, initialMessage);
-
-                if (this.channel === 'email') { 
-                    this.navigate('success-email'); 
-                    document.getElementById('success-protocol').innerText = `Protocolo HZ-${ticket.protocol_number}`; 
-                    return; 
-                }
-                
-                this.navigate('chat'); 
-                document.getElementById('header-desc').innerText = `Protocolo HZ-${ticket.protocol_number}`;
-                this.renderMsg("Olá! Recebemos seu chamado e sua solicitação já está na fila.", 'system');
-                this.renderMsg(initialMessage, 'customer');
-
-                clientAPI.subscribeToTicket(this.ticketId, (t) => {
-                    if (t.status === 'closed') { 
-                        this.navigate('nps'); 
-                        this.renderNPSButtons(); 
-                    }
-                    const btnAttach = document.getElementById('btn-attach');
-                    if (btnAttach) { 
-                        if (t.is_upload_enabled) btnAttach.classList.remove('hidden-view'); 
-                        else btnAttach.classList.add('hidden-view'); 
-                    }
-                });
-
-                clientAPI.subscribeToMessages(this.ticketId, (msg, fUrl, fName, fType) => { 
-                    this.renderMsg(msg, 'agent', fUrl, fName, fType); 
-                });
-
-            } catch (err) { 
-                alert("Erro ao iniciar atendimento: " + err.message); 
-                btn.innerHTML = originalText; 
+            } catch(err) {
+                alert("Erro: " + err.message);
+            } finally {
+                btn.innerHTML = orig;
             }
         });
 
-        document.getElementById('chat-form')?.addEventListener('submit', async (e) => {
-            e.preventDefault(); 
-            const input = document.getElementById('chat-input'); 
+        document.getElementById('client-chat-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
             const text = input.value.trim();
-            if(!text || !this.ticketId) return;
-            
-            this.renderMsg(text, 'customer'); 
+            if (!text || !this.ticketId) return;
+
+            // Mostra na tela na mesma hora
+            this.renderMsg(text, 'customer');
             input.value = '';
-            
-            try { 
-                await clientAPI.sendMessage(this.ticketId, text); 
-            } catch(e) { 
-                console.error("Erro msg", e); 
+
+            try {
+                // Ao salvar no banco, mandamos o texto original. O agente traduz lá na ponta dele.
+                await this.sendMessage(text);
+            } catch(err) {
+                alert("Falha ao enviar.");
             }
         });
 
-        const btnAttach = document.getElementById('btn-attach');
-        const fileInput = document.getElementById('file-input');
-        if (btnAttach && fileInput) {
-            btnAttach.addEventListener('click', () => fileInput.click());
-            
-            fileInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0]; 
-                if(!file) return;
-                
-                document.getElementById('upload-progress').classList.remove('hidden-view'); 
-                document.getElementById('btn-send').disabled = true;
-                
-                try {
-                    const fileData = await clientAPI.uploadFile(file);
-                    await clientAPI.sendMessage(this.ticketId, "📎 Anexo enviado pelo cliente:", fileData);
-                    this.renderMsg("📎 Anexo enviado:", 'customer', fileData.url, fileData.name, fileData.type);
-                } catch(err) { 
-                    alert("Erro no upload do arquivo."); 
-                } finally { 
-                    document.getElementById('upload-progress').classList.add('hidden-view'); 
-                    document.getElementById('btn-send').disabled = false; 
-                    e.target.value = ''; 
-                }
-            });
-        }
+        // Configuração de Estrelas NPS
+        this.setupRatingStars();
     },
 
-    navigate(target) { 
-        ['subjects', 'channel', 'register', 'chat', 'nps', 'success-email'].forEach(s => { 
-            const el = document.getElementById(`sec-${s}`); 
-            if (el) el.classList.add('hidden-view'); 
-        }); 
-        const targetEl = document.getElementById(`sec-${target}`); 
-        if (targetEl) targetEl.classList.remove('hidden-view'); 
-    },
-    
-    async loadSubjects() {
-        const container = document.getElementById('subject-list'); 
-        if (!container) return;
-        try {
-            const subjects = await clientAPI.getActiveSubjects(); 
-            if (!subjects || subjects.length === 0) return;
-            container.innerHTML = subjects.map(s => `
-                <button onclick="clientApp.selectSubject('${s.id}')" class="w-full text-left p-6 bg-white border-2 border-slate-200 rounded-2xl hover:border-blue-600 hover:bg-blue-50 transition-all font-black text-slate-700 flex justify-between items-center group">
-                    ${s.label} <span class="material-symbols-outlined text-slate-300 group-hover:text-blue-600">chevron_right</span>
-                </button>
-            `).join('');
-        } catch (e) { 
-            container.innerHTML = `<div class="text-center text-red-500 font-bold py-4">Erro.</div>`; 
-        }
-    },
+    setLanguage(lang) {
+        this.currentLang = lang;
+        const dict = this.i18n[lang];
+        if (!dict) return;
 
-    selectSubject(id) { 
-        this.selectedSubject = id; 
-        this.navigate('channel'); 
-    },
-    
-    selectChannel(ch) { 
-        this.channel = ch; 
-        this.navigate('register'); 
-    },
-
-    renderMsg(text, type, fileUrl = null, fileName = null, fileType = null) {
-        const area = document.getElementById('chat-messages'); 
-        if (!area) return;
-        
-        let mediaHtml = '';
-        if (fileUrl) {
-            if (fileType && fileType.startsWith('image/')) {
-                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-[200px] rounded-lg border hover:opacity-80 transition-opacity"></a></div>`;
-            } else {
-                mediaHtml = `<div class="mt-2"><a href="${fileUrl}" target="_blank" download class="flex items-center gap-1 bg-black/10 p-2 rounded text-[10px] font-bold text-inherit hover:bg-black/20 transition-colors"><span class="material-symbols-outlined text-xs">download</span> ${fileName || 'Arquivo'}</a></div>`;
+        for (const [id, text] of Object.entries(dict)) {
+            const el = document.getElementById(id);
+            if (el) {
+                if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = text;
+                else el.innerText = text;
             }
         }
         
-        if (type === 'system') { 
-            area.innerHTML += `<div class="flex justify-center w-full"><div class="bg-blue-50 text-blue-800 text-xs font-bold px-4 py-2 rounded-full border border-blue-100 text-center">${text}</div></div>`; 
-        } else { 
-            const isMe = type === 'customer'; 
-            area.innerHTML += `
-            <div class="flex ${isMe ? 'justify-end' : 'justify-start'} w-full">
-                <div class="max-w-[85%] p-4 rounded-2xl text-sm font-medium shadow-sm ${isMe ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}">
-                    ${text}${mediaHtml}
-                </div>
-            </div>`; 
+        // Força a recarga da tela de chat para traduzir mensagens recebidas
+        if (this.ticketId) {
+            this.loadChat(this.ticketId);
         }
-        area.scrollTop = area.scrollHeight;
     },
 
-    renderNPSButtons() {
-        const container = document.getElementById('nps-buttons'); 
-        if (!container) return;
+    async translate(text) {
+        if (!text || this.currentLang === 'pt') return text;
+        try {
+            const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${this.currentLang}&dt=t&q=${encodeURIComponent(text)}`);
+            const data = await res.json();
+            let translated = '';
+            data[0].forEach(item => translated += item[0]);
+            return translated;
+        } catch(e) {
+            return text;
+        }
+    },
+
+    async loadSubjects() {
+        const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
+        if (error) return;
+        const select = document.getElementById('client-subject');
+        data.forEach(sub => {
+            select.innerHTML += `<option value="${sub.id}">${sub.label}</option>`;
+        });
+    },
+
+    toggleViewMode() {
+        const isTracking = document.getElementById('new-ticket-fields').classList.contains('hidden-view');
+        const btnStart = document.getElementById('lbl-btn-start');
+        const btnToggle = document.getElementById('btn-toggle-mode');
+        
+        if (isTracking) {
+            document.getElementById('new-ticket-fields').classList.remove('hidden-view');
+            document.getElementById('client-subject').required = true;
+            document.getElementById('client-initial-message').required = true;
+            
+            const txtBtn = this.i18n[this.currentLang]['lbl-btn-start'];
+            const txtTog = this.i18n[this.currentLang]['btn-toggle-mode'];
+            btnStart.innerText = txtBtn || "Iniciar Atendimento";
+            btnToggle.innerText = txtTog || "Já tem um protocolo? Acompanhe aqui";
+        } else {
+            document.getElementById('new-ticket-fields').classList.add('hidden-view');
+            document.getElementById('client-subject').required = false;
+            document.getElementById('client-initial-message').required = false;
+            
+            btnStart.innerText = this.currentLang === 'en' ? "Track Ticket" : (this.currentLang === 'es' ? "Rastrear" : "Acompanhar Chamado");
+            btnToggle.innerText = this.currentLang === 'en' ? "Open new ticket" : (this.currentLang === 'es' ? "Abrir nuevo" : "Abrir novo chamado");
+        }
+    },
+
+    async createTicket() {
+        const name = document.getElementById('client-name').value;
+        const email = document.getElementById('client-email').value;
+        const subjectId = document.getElementById('client-subject').value;
+        const message = document.getElementById('client-initial-message').value;
+
+        // Verifica Cliente
+        let { data: customer } = await supabase.from('customers').select('id').eq('email', email).single();
+        if (!customer) {
+            const { data: newCustomer, error: errC } = await supabase.from('customers').insert([{ full_name: name, email: email }]).select().single();
+            if (errC) throw errC;
+            customer = newCustomer;
+        }
+        this.customerId = customer.id;
+
+        // Cria Ticket
+        const { data: ticket, error: errT } = await supabase.from('tickets').insert([{ 
+            customer_id: customer.id, 
+            subject_id: subjectId, 
+            channel: 'web', 
+            status: 'open',
+            last_sender: 'customer',
+            last_interaction_at: new Date()
+        }]).select('id, protocol_number, ticket_subjects(label)').single();
+        if (errT) throw errT;
+        
+        this.ticketId = ticket.id;
+
+        // Envia primeira mensagem
+        await this.sendMessage(message);
+
+        // Muda Tela
+        this.setupChatUI(ticket);
+        this.loadChat(ticket.id);
+    },
+
+    async trackTicket(email) {
+        const { data: customer } = await supabase.from('customers').select('id').eq('email', email).single();
+        if (!customer) throw new Error("E-mail não encontrado.");
+        
+        this.customerId = customer.id;
+
+        const { data: tickets, error } = await supabase.from('tickets')
+            .select('id, protocol_number, status, ticket_subjects(label)')
+            .eq('customer_id', customer.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (error || tickets.length === 0) throw new Error("Nenhum chamado aberto.");
+        
+        const ticket = tickets[0];
+        this.ticketId = ticket.id;
+        
+        this.setupChatUI(ticket);
+        this.loadChat(ticket.id);
+
+        if (ticket.status === 'closed') {
+            this.showRatingModal();
+        }
+    },
+
+    setupChatUI(ticket) {
+        document.getElementById('view-start').classList.add('hidden-view');
+        document.getElementById('view-chat').classList.remove('hidden-view');
+        document.getElementById('chat-protocol').innerText = `HZ-${ticket.protocol_number}`;
+        document.getElementById('chat-subject').innerText = ticket.ticket_subjects?.label || '';
+    },
+
+    async loadChat(ticketId) {
+        const { data: msgs } = await supabase.from('messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
+        
+        const container = document.getElementById('chat-messages-container');
+        container.innerHTML = '';
+        
+        for (let m of msgs) {
+            // Traduz a mensagem se foi o Agente ou o Sistema que mandou
+            let textToShow = m.content;
+            if (m.sender_type !== 'customer') {
+                textToShow = await this.translate(m.content);
+            }
+            this.renderMsg(textToShow, m.sender_type);
+        }
+
+        if (this.messageSub) this.messageSub.unsubscribe();
+        
+        this.messageSub = supabase.channel(`client-${ticketId}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, async payload => {
+                if (payload.new.sender_type !== 'customer') {
+                    const translatedText = await this.translate(payload.new.content);
+                    this.renderMsg(translatedText, payload.new.sender_type);
+                }
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticketId}` }, payload => {
+                if (payload.new.status === 'closed') {
+                    this.showRatingModal();
+                }
+            }).subscribe();
+    },
+
+    renderMsg(text, type) {
+        const isClient = type === 'customer';
+        const container = document.getElementById('chat-messages-container');
+        
+        if (type === 'system') {
+            container.innerHTML += `<div class="msg-system">${text}</div>`;
+        } else {
+            container.innerHTML += `
+            <div class="flex ${isClient ? 'justify-end' : 'justify-start'} w-full">
+                <div class="max-w-[85%] p-4 rounded-3xl text-sm font-medium shadow-sm ${isClient ? 'msg-client' : 'msg-agent'} whitespace-pre-wrap">
+                    ${text}
+                </div>
+            </div>`;
+        }
+        
+        const history = document.getElementById('chat-history');
+        history.scrollTop = history.scrollHeight;
+    },
+
+    async sendMessage(text) {
+        const payload = { ticket_id: this.ticketId, sender_type: 'customer', content: text };
+        await supabase.from('messages').insert([payload]);
+        await supabase.from('tickets').update({ last_sender: 'customer', last_interaction_at: new Date(), has_warning_sent: false }).eq('id', this.ticketId);
+    },
+
+    leaveChat() {
+        location.reload();
+    },
+
+    // ==========================================
+    // SISTEMA DE AVALIAÇÃO NPS E COMENTÁRIOS
+    // ==========================================
+    showRatingModal() {
+        if (this.hasRated) return; // Se já avaliou na sessão atual, não incomoda de novo
+        document.getElementById('chat-input-area').classList.add('hidden-view');
+        document.getElementById('view-rating').classList.remove('hidden-view');
+    },
+
+    setupRatingStars() {
+        const container = document.getElementById('rating-stars');
         let html = '';
         for(let i=1; i<=10; i++) {
-            let colorClass = i <= 6 ? 'bg-red-100 text-red-600 hover:bg-red-500 hover:text-white' : i <= 8 ? 'bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white' : 'bg-green-100 text-green-600 hover:bg-green-500 hover:text-white';
-            html += `<button onclick="clientApp.submitNPS(${i}, this)" class="flex-1 min-w-0 h-10 rounded font-black text-xs sm:text-sm transition-all flex items-center justify-center ${colorClass}">${i}</button>`;
+            html += `<button type="button" class="w-8 h-8 rounded-full border-2 border-slate-200 text-slate-400 font-bold text-xs hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all star-btn" data-val="${i}">${i}</button>`;
         }
         container.innerHTML = html;
-    },
 
-    async submitNPS(rating, btnElement) {
-        document.querySelectorAll('#nps-buttons button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
-        btnElement.style.opacity = '1'; 
-        btnElement.style.transform = 'scale(1.1)';
-        try { 
-            await clientAPI.submitNPS(this.ticketId, rating); 
-            document.getElementById('nps-thanks').classList.remove('hidden-view'); 
-        } catch (e) { 
-            alert("Erro ao salvar avaliação."); 
-        }
+        let selectedRating = null;
+
+        document.querySelectorAll('.star-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                selectedRating = parseInt(e.target.dataset.val);
+                
+                // Pintar estrelas selecionadas
+                document.querySelectorAll('.star-btn').forEach(b => {
+                    const val = parseInt(b.dataset.val);
+                    if (val <= selectedRating) {
+                        b.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                        b.classList.remove('border-slate-200', 'text-slate-400', 'bg-blue-50');
+                    } else {
+                        b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                        b.classList.add('border-slate-200', 'text-slate-400');
+                    }
+                });
+
+                // Mostra a caixa de comentário e o botão de enviar
+                document.getElementById('rating-comment').classList.remove('hidden-view');
+                document.getElementById('btn-submit-rating').classList.remove('hidden-view');
+            });
+        });
+
+        document.getElementById('btn-submit-rating').addEventListener('click', async () => {
+            if (!selectedRating || !this.ticketId) return;
+            
+            const comment = document.getElementById('rating-comment').value.trim();
+            const btn = document.getElementById('btn-submit-rating');
+            btn.innerHTML = "Enviando..."; btn.disabled = true;
+
+            try {
+                await supabase.from('tickets').update({ 
+                    rating: selectedRating,
+                    rating_comment: comment // Salva o comentário no banco de dados!
+                }).eq('id', this.ticketId);
+                
+                this.hasRated = true;
+                
+                // Agradecimento
+                document.getElementById('view-rating').innerHTML = `
+                    <div class="bg-white border border-slate-200 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
+                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><span class="material-symbols-outlined text-3xl">favorite</span></div>
+                        <h3 class="text-2xl font-black text-slate-900 mb-2">${this.currentLang === 'pt' ? 'Obrigado!' : (this.currentLang === 'en' ? 'Thank You!' : '¡Gracias!')}</h3>
+                        <p class="text-sm font-medium text-slate-500 mb-8">${this.currentLang === 'pt' ? 'Sua avaliação nos ajuda a melhorar.' : (this.currentLang === 'en' ? 'Your feedback helps us improve.' : 'Sus comentarios nos ayudan a mejorar.')}</p>
+                        <button onclick="location.reload()" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl shadow-lg">OK</button>
+                    </div>
+                `;
+            } catch(e) {
+                alert("Erro ao salvar avaliação.");
+                btn.innerHTML = "Tentar Novamente"; btn.disabled = false;
+            }
+        });
     }
 };
 
-App.init();
+ClientApp.init();
