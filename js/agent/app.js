@@ -22,7 +22,6 @@ const App = {
     systemSettings: null,
     closingTickets: new Set(),
     
-    // Filtros do Dashboard/Team
     dashboardTickets: [],
     allProfiles: [],
     allTeamProfiles: [],
@@ -31,8 +30,11 @@ const App = {
     teamSearchQuery: "",
     tableSearchQuery: "",
 
+    // Preferência de Áudio
+    isSoundEnabled: true,
+
     async init() {
-        window.agentApp = this; // Bind absoluto global
+        window.agentApp = this; 
         Dashboard.init(this);
         
         try {
@@ -42,6 +44,12 @@ const App = {
             this.systemSettings = { is_orchestrator_active: false, chat_timeout_min: 10, email_timeout_hr: 24, chat_warning_min: 8, email_warning_hr: 20 };
         }
 
+        // Restaura a preferência de Som
+        const savedSound = localStorage.getItem('horizon_sound');
+        if (savedSound !== null) this.isSoundEnabled = savedSound === 'true';
+        const iconSound = document.getElementById('icon-sound');
+        if (iconSound) iconSound.innerText = this.isSoundEnabled ? 'volume_up' : 'volume_off';
+
         const today = new Date();
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         if(document.getElementById('dash-start')) document.getElementById('dash-start').value = firstDay.toISOString().split('T')[0];
@@ -50,6 +58,7 @@ const App = {
         this.startLiveTimers(); 
 
         window.addEventListener('ticket-assigned', async (e) => { 
+            agentApp.playAlert('ticket');
             await agentApp.loadQueue(); 
             if (!agentApp.activeTicketId) agentApp.pickTicket(e.detail.id); 
         });
@@ -104,8 +113,6 @@ const App = {
                 agentAPI.subscribeToQueue(async () => {
                     await agentApp.loadQueue();
                     if (agentApp.currentUser && agentApp.currentUser.status === 'online') Orchestrator.findAndClaimNext();
-                    if (document.getElementById('sec-dashboard') && !document.getElementById('sec-dashboard').classList.contains('hidden-view')) await Dashboard.render();
-                    if (document.getElementById('sec-team') && !document.getElementById('sec-team').classList.contains('hidden-view')) await agentApp.loadTeam();
                 });
 
                 agentAPI.subscribeToSettings((newCfg) => {
@@ -133,6 +140,7 @@ const App = {
 
                 agentAPI.subscribeToInternalMessages(agentApp.currentUser.id, async (msg) => {
                     if (document.getElementById('modal-internal-chat').classList.contains('hidden-view') || agentApp.internalChatTarget !== msg.sender_id) {
+                        agentApp.playAlert('message'); // Toca o som para nova msg interna
                         const alertBtn = document.getElementById('btn-internal-alert');
                         if (alertBtn) {
                             alertBtn.classList.remove('hidden-view');
@@ -171,14 +179,47 @@ const App = {
 
         agentApp.setupAgentAttachment('btn-agent-attach', 'agent-file-input'); 
         agentApp.setupAgentAttachment('btn-email-attach', 'email-file-input', true);
+        
+        document.getElementById('internal-chat-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault(); const input = document.getElementById('internal-chat-input'); const text = input.value.trim();
+            if (!text || !agentApp.internalChatTarget) return;
+            try { await agentAPI.sendInternalMessage(agentApp.currentUser.id, agentApp.internalChatTarget, text); agentApp.renderInternalMsg({ content: text }, true); input.value = ''; } catch (err) { alert("Erro ao enviar."); }
+        });
     },
 
+    // ===============================================
+    // LÓGICA DE SOM
+    // ===============================================
+    toggleSound() {
+        this.isSoundEnabled = !this.isSoundEnabled;
+        localStorage.setItem('horizon_sound', this.isSoundEnabled);
+        const icon = document.getElementById('icon-sound');
+        if (icon) icon.innerText = this.isSoundEnabled ? 'volume_up' : 'volume_off';
+    },
+
+    playAlert(type) {
+        if (!this.isSoundEnabled) return;
+        try {
+            const url = type === 'ticket' 
+                ? 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' 
+                : 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'; 
+            const audio = new Audio(url);
+            audio.play();
+        } catch(e) { console.error("Erro ao tocar áudio", e); }
+    },
+
+    // ===============================================
+    // DELEGAÇÕES
+    // ===============================================
     async renderDashboard() { await Dashboard.render(); },
     filterDashboardByAgent(id, name) { Dashboard.filterDashboardByAgent(id, name); },
     filterTable() { agentApp.tableSearchQuery = document.getElementById('table-search')?.value.toLowerCase() || ""; Dashboard.renderClosedCasesTable(agentApp.dashboardTickets, agentApp.allProfiles); },
     exportCSV() { Dashboard.exportCSV(); },
     async changeLanguage(lang) { Translator.setLanguage(lang); if (agentApp.activeTicketId) await agentApp.pickTicket(agentApp.activeTicketId); },
 
+    // ===============================================
+    // TIMERS, SLA E BOLHAS VISUAIS
+    // ===============================================
     startLiveTimers() {
         if (agentApp.timerInterval) clearInterval(agentApp.timerInterval);
         
@@ -193,7 +234,6 @@ const App = {
             if (agentApp.systemSettings && agentApp.currentUser) {
                 const chatWarnSecs = (agentApp.systemSettings.chat_warning_min || 8) * 60;
                 const emailWarnSecs = (agentApp.systemSettings.email_warning_hr || 24) * 3600;
-                
                 const chatCloseSecs = (agentApp.systemSettings.chat_timeout_min || 10) * 60;
                 const emailCloseSecs = (agentApp.systemSettings.email_timeout_hr || 48) * 3600;
                 
@@ -211,10 +251,10 @@ const App = {
                         if (t.last_sender === 'customer') {
                             el.classList.add('animate-pulse');
                             if (!t.first_reply_at) {
-                                el.style.backgroundColor = '#16a34a'; 
+                                el.style.backgroundColor = '#16a34a'; // Verde (Novo)
                                 el.style.color = '#ffffff';
                             } else {
-                                el.style.backgroundColor = '#2563eb'; 
+                                el.style.backgroundColor = '#2563eb'; // Azul (Retornou)
                                 el.style.color = '#ffffff';
                             }
                         } else {
@@ -222,26 +262,22 @@ const App = {
                             const diffMinutes = Math.floor(diffSeconds / 60); 
                             const maxFadingMins = t.channel === 'web' ? (agentApp.systemSettings.chat_timeout_min || 10) : 60; 
                             const opacity = Math.max(0.15, 1 - (diffMinutes / maxFadingMins));
-                            el.style.backgroundColor = `rgba(51, 65, 85, ${opacity})`; 
+                            el.style.backgroundColor = `rgba(51, 65, 85, ${opacity})`; // Cinza esmaecendo
                             el.style.color = opacity < 0.4 ? '#0f172a' : '#ffffff';
                         }
                     }
 
                     if (t.last_sender === 'agent' && !agentApp.closingTickets.has(t.id)) {
-                        
                         if (!t.has_warning_sent) {
                             const isWebWarn = t.channel === 'web' && diffSeconds >= chatWarnSecs;
                             const isEmailWarn = t.channel === 'email' && diffSeconds >= emailWarnSecs;
-                            
                             if (isWebWarn || isEmailWarn) {
                                 t.has_warning_sent = true; 
                                 agentApp.executeWarning(t);
                             }
-                        } 
-                        else {
+                        } else {
                             const isWebClose = t.channel === 'web' && diffSeconds >= totalChatCloseSecs;
                             const isEmailClose = t.channel === 'email' && diffSeconds >= totalEmailCloseSecs;
-
                             if (isWebClose || isEmailClose) {
                                 agentApp.closingTickets.add(t.id);
                                 agentApp.executeAutoClose(t);
@@ -258,12 +294,10 @@ const App = {
             console.log(`[SLA] Disparando Alerta de Ociosidade (HZ-${ticket.protocol_number})`);
             let rawMsg = ticket.channel === 'web' ? agentApp.systemSettings.warning_macro_chat : agentApp.systemSettings.warning_macro_email;
             let msg = rawMsg || "Atenção: O atendimento será encerrado em breve por inatividade. Ainda está por aí?";
-            
             msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
 
             await agentAPI.sendSystemMessage(ticket.id, msg, 'sla');
-            
             if (agentApp.activeTicketId === ticket.id) agentApp.renderMsg(msg, 'system');
         } catch(e) { console.error("Falha ao enviar alerta:", e); }
     },
@@ -273,7 +307,6 @@ const App = {
             console.log(`[SLA] Encerrando HZ-${ticket.protocol_number} por inatividade.`);
             let rawMsg = agentApp.systemSettings.closure_macro;
             let msg = rawMsg || "Atendimento encerrado por inatividade.";
-            
             msg = msg.replace(/\[nome do cliente\]/gi, ticket.customers?.full_name || 'Cliente');
             msg = msg.replace(/\[protocolo\]/gi, ticket.protocol_number);
 
@@ -282,14 +315,15 @@ const App = {
             
             agentApp.activeTickets = agentApp.activeTickets.filter(t => t.id !== ticket.id);
             if (agentApp.activeTicketId === ticket.id) {
-                agentApp.activeTicketId = null; 
-                document.getElementById('menu-chat').classList.add('hidden-view'); 
-                agentApp.navigate('queue');
+                agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue');
             }
             await agentApp.loadQueue();
         } catch(e) { console.error("Falha na macro de encerramento:", e); } finally { agentApp.closingTickets.delete(ticket.id); }
     },
 
+    // ===============================================
+    // CORE GERAL
+    // ===============================================
     async toggleGlobalOrchestrator(isActive) {
         try { await agentAPI.updateSystemSettings({ is_orchestrator_active: isActive }); } catch (e) { document.getElementById('toggle-routing').checked = !isActive; alert("Erro de Conexão."); }
     },
@@ -308,7 +342,7 @@ const App = {
                     await agentAPI.sendMessage(agentApp.activeTicketId, "📎 Anexo enviado pelo Analista:", fileData);
                     agentApp.updateLocalBubble();
                     if (isEmail) { const msgs = await agentAPI.getMessages(agentApp.activeTicketId); agentApp.renderEmailThread(agentApp.currentTicket, msgs); } else { agentApp.renderMsg("📎 Anexo enviado:", 'agent', fileData.url, fileData.name, fileData.type); }
-                } catch(err) { alert("Erro no upload do arquivo."); } finally { btnSend.innerHTML = origText; btnSend.disabled = false; e.target.value = ''; }
+                } catch(err) { alert("Erro no upload."); } finally { btnSend.innerHTML = origText; btnSend.disabled = false; e.target.value = ''; }
             });
         }
     },
@@ -323,7 +357,6 @@ const App = {
         try {
             await agentAPI.changeStatus(agentApp.currentUser.id, newStatus);
             agentApp.currentUser.status = newStatus;
-            
             if (newStatus !== 'online') {
                 await agentAPI.releaseMyTickets(agentApp.currentUser.id);
                 Orchestrator.setStatus(false);
@@ -336,15 +369,15 @@ const App = {
 
     async forceAgentStatus(agentId, newStatus) {
         if(!confirm(`Deseja forçar o status para ${newStatus.toUpperCase()}? Os tickets em andamento serão devolvidos à fila.`)) return;
-        try { await agentAPI.changeStatus(agentId, newStatus); if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId); await agentApp.loadTeam(); } catch(e) { alert("Erro ao alterar status do agente."); }
+        try { await agentAPI.changeStatus(agentId, newStatus); if (newStatus !== 'online') await agentAPI.releaseMyTickets(agentId); await agentApp.loadTeam(); } catch(e) { alert("Erro ao alterar status."); }
     },
 
     async updateAgentLimits(agentId, maxChats, maxEmails) {
-        try { let c = maxChats === "" ? null : maxChats; let e = maxEmails === "" ? null : maxEmails; await agentAPI.updateAgentLimits(agentId, c, e); } catch (e) { alert("Erro ao atualizar limites do agente."); }
+        try { let c = maxChats === "" ? null : maxChats; let e = maxEmails === "" ? null : maxEmails; await agentAPI.updateAgentLimits(agentId, c, e); } catch (e) { alert("Erro ao atualizar limites."); }
     },
     
     async updateAgentGroup(agentId, groupName) {
-        try { await agentAPI.updateAgentGroup(agentId, groupName); } catch (e) { alert("Erro ao atualizar equipe do agente."); }
+        try { await agentAPI.updateAgentGroup(agentId, groupName); } catch (e) { alert("Erro ao atualizar equipe."); }
     },
 
     applyWatermark(name) {
@@ -376,113 +409,6 @@ const App = {
         if (target === 'team') agentApp.loadTeam(); if (target === 'dashboard') agentApp.renderDashboard(); if (target === 'settings') agentApp.loadSettingsUI();
     },
 
-    async loadSettingsUI() {
-        try {
-            const cfg = await agentAPI.getSystemSettings();
-            
-            const qActive = document.getElementById('cfg-queue-active');
-            if (qActive) {
-                qActive.checked = cfg.is_queue_warning_active || false;
-                document.getElementById('cfg-queue-min').value = cfg.queue_warning_min || 2;
-                document.getElementById('cfg-queue-macro').value = cfg.queue_warning_macro || '';
-            }
-
-            document.getElementById('cfg-chat-warn-time').value = cfg.chat_warning_min || 8; 
-            document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
-            document.getElementById('cfg-email-warn-time').value = cfg.email_warning_hr || 24; 
-            document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 48;
-            document.getElementById('cfg-macro-warn-chat').value = cfg.warning_macro_chat || ''; 
-            document.getElementById('cfg-macro-warn-email').value = cfg.warning_macro_email || ''; 
-            document.getElementById('cfg-macro').value = cfg.closure_macro || '';
-            
-            agentApp.allSubjects = await agentAPI.getAllSubjects(); 
-            agentApp.allSubsubjects = await agentAPI.getAllSubsubjects();
-            agentApp.renderSettingsTags();
-        } catch(e) { console.error("Erro UI de configurações", e); }
-    },
-
-    renderSettingsTags() {
-        const container = document.getElementById('settings-tags-list'); if (!container) return;
-        let html = '';
-        agentApp.allSubjects.forEach(sub => {
-            const subsubs = agentApp.allSubsubjects.filter(ss => ss.subject_id === sub.id);
-            let subHtml = subsubs.map(ss => `<span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">${ss.label} <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500 transition-colors flex items-center"><span class="material-symbols-outlined text-[12px]">close</span></button></span>`).join('');
-            html += `<div class="border border-slate-200 rounded-xl p-5 bg-white relative z-20 shadow-sm"><div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3"><span class="font-black text-slate-800 text-base flex items-center gap-2"><span class="material-symbols-outlined text-slate-400">label</span> ${sub.label}</span><button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-xs text-red-500 font-bold flex items-center gap-1 hover:underline bg-red-50 px-2 py-1 rounded"><span class="material-symbols-outlined text-[14px]">delete</span> Excluir Motivo</button></div><div class="flex flex-wrap gap-2 mb-4">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div><div class="flex gap-2"><input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-600" placeholder="Digite um novo Submotivo (Tag 2)..."><button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 rounded-lg text-xs font-bold transition-colors">Adicionar Submotivo</button></div></div>`;
-        });
-        container.innerHTML = html;
-    },
-
-    async addTag1() {
-        const input = document.getElementById('new-tag1-input'); const val = input.value.trim(); if(!val) return;
-        try { await agentAPI.createSubject(val); input.value = ''; agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao criar Motivo Principal."); }
-    },
-
-    async addTag2(subjectId) {
-        const input = document.getElementById(`new-tag2-${subjectId}`); const val = input.value.trim(); if(!val) return;
-        try { await agentAPI.createSubsubject(subjectId, val); input.value = ''; agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao criar Submotivo."); }
-    },
-
-    async toggleSubject(id, isActive) {
-        if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal e todos os submotivos vinculados a ele?")) return;
-        try { await agentAPI.toggleSubject(id, isActive); agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir."); }
-    },
-
-    async toggleSubsubject(id, isActive) {
-        try { await agentAPI.toggleSubsubject(id, isActive); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir submotivo."); }
-    },
-
-    insertMacroVar(variable, targetId = 'cfg-macro') {
-        const txt = document.getElementById(targetId); 
-        if(!txt) return;
-        const start = txt.selectionStart; const end = txt.selectionEnd;
-        txt.value = txt.value.substring(0, start) + variable + txt.value.substring(end); 
-        txt.focus();
-    },
-
-    async saveSettings() {
-        const btn = document.getElementById('btn-save-cfg');
-        const origHtml = btn.innerHTML;
-        btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
-        
-        try {
-            const chatWarn = parseInt(document.getElementById('cfg-chat-warn-time').value) || 8;
-            const chatClose = parseInt(document.getElementById('cfg-chat-time').value) || 10;
-            const emailWarn = parseInt(document.getElementById('cfg-email-warn-time').value) || 24;
-            const emailClose = parseInt(document.getElementById('cfg-email-time').value) || 48;
-
-            if (chatWarn >= chatClose) { alert("ERRO: No Canal WEB, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
-            if (emailWarn >= emailClose) { alert("ERRO: No Canal E-mail, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
-
-            const payload = { 
-                chat_warning_min: chatWarn, chat_timeout_min: chatClose, 
-                email_warning_hr: emailWarn, email_timeout_hr: emailClose, 
-                warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, 
-                warning_macro_email: document.getElementById('cfg-macro-warn-email').value, 
-                closure_macro: document.getElementById('cfg-macro').value 
-            };
-            
-            const qActive = document.getElementById('cfg-queue-active');
-            if (qActive) {
-                payload.is_queue_warning_active = qActive.checked;
-                payload.queue_warning_min = parseInt(document.getElementById('cfg-queue-min').value) || 2;
-                payload.queue_warning_macro = document.getElementById('cfg-queue-macro').value;
-            }
-            
-            await agentAPI.updateSystemSettings(payload); 
-            agentApp.systemSettings = Object.assign({}, agentApp.systemSettings, payload);
-            alert("Configurações atualizadas com sucesso!");
-        } catch (e) { alert("Erro ao salvar as configurações."); } finally { btn.innerHTML = origHtml; }
-    },
-
-    async toggleClientUpload(isEnabled) { 
-        try { await agentAPI.toggleUpload(agentApp.activeTicketId, isEnabled); agentApp.updateUploadToggleUI(isEnabled); } catch(e) { alert("Erro de permissão."); document.getElementById('toggle-upload').checked = !isEnabled; } 
-    },
-    
-    updateUploadToggleUI(isEnabled) {
-        const textEl = document.getElementById('upload-status-text'); if(!textEl) return;
-        textEl.innerText = isEnabled ? 'Anexos (Cli): Lib' : 'Anexos (Cli): Off'; textEl.className = `text-[10px] font-bold uppercase ${isEnabled ? 'text-blue-600' : 'text-slate-400'}`;
-    },
-
     async loadQueue() {
         try {
             agentApp.activeTickets = await agentAPI.getPendingTickets();
@@ -496,7 +422,6 @@ const App = {
                 gestorView.classList.remove('hidden-view'); agentView.classList.add('hidden-view');
                 const tickets = agentApp.activeTickets;
                 if(countEl) countEl.innerText = `${tickets.length} tickets ativos`;
-                
                 if (tickets.length === 0) { tbody.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-slate-300 font-bold">Nenhum ticket na fila.</td></tr>`; return; }
 
                 tbody.innerHTML = tickets.map(t => {
@@ -596,7 +521,6 @@ const App = {
             const msgs = await agentAPI.getMessages(id);
             if (agentApp.messageSub) agentApp.messageSub.unsubscribe();
 
-            // Traduz Mensagens Dinâmicas do Cliente
             if (Translator.currentLang !== 'pt') {
                 for (let m of msgs) { if (m.sender_type === 'customer') m.content = await Translator.translateDynamic(m.content); }
             }
@@ -610,13 +534,14 @@ const App = {
                 msgs.forEach(m => agentApp.renderMsg(m.content, m.sender_type, m.file_url, m.file_name, m.file_type));
 
                 agentApp.messageSub = agentAPI.subscribeToMessages(id, async (msgText, fUrl, fName, fType) => {
+                    agentApp.playAlert('message'); // Som nova msg cliente
                     if (Translator.currentLang !== 'pt') msgText = await Translator.translateDynamic(msgText);
                     agentApp.renderMsg(msgText, 'customer', fUrl, fName, fType);
                     const tkIndex = agentApp.activeTickets.findIndex(tk => tk.id === id);
                     if (tkIndex > -1) { agentApp.activeTickets[tkIndex].last_sender = 'customer'; agentApp.activeTickets[tkIndex].last_interaction_at = new Date().toISOString(); agentApp.renderBubbles(); }
                 });
             }
-        } catch (e) { alert("Erro ao carregar chat: " + e.message); }
+        } catch (e) { alert("Erro ao carregar chat."); }
     },
 
     filterTag2() {
@@ -649,6 +574,7 @@ const App = {
         if (!confirm("Encerrar atendimento atual?")) return;
         try { await agentAPI.closeTicket(agentApp.activeTicketId, tag1, tag2, notes); agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue'); Orchestrator.findAndClaimNext(); } catch (error) { alert("Erro ao fechar."); }
     },
+
     switchTab(tabId) { ['info', 'history', 'orders'].forEach(t => { document.getElementById(`view-crm-${t}`).classList.add('hidden-view'); document.getElementById(`tab-${t}`).classList.remove('border-blue-600', 'text-blue-600'); }); document.getElementById(`view-crm-${tabId.replace('crm-', '')}`).classList.remove('hidden-view'); document.getElementById(tabId.replace('crm-', 'tab-')).classList.add('border-blue-600', 'text-blue-600'); },
     populateTransferDropdowns() {
         const subSelect = document.getElementById('transfer-subject'); subSelect.innerHTML = '<option value="">➜ Para Fila (Assunto)...</option>'; agentApp.allSubjects.forEach(s => subSelect.innerHTML += `<option value="${s.id}">${s.label}</option>`);
@@ -659,16 +585,69 @@ const App = {
         if (!newSub && !newAg) return;
         if (confirm("Deseja transferir este chamado?")) { try { await agentAPI.transferTicket(agentApp.activeTicketId, newSub, newAg, notes); agentApp.activeTicketId = null; document.getElementById('menu-chat').classList.add('hidden-view'); agentApp.navigate('queue'); Orchestrator.findAndClaimNext(); } catch (e) { alert("Erro na transferência."); } }
     },
-    
+
+    async loadSettingsUI() {
+        try {
+            const cfg = await agentAPI.getSystemSettings();
+            const qActive = document.getElementById('cfg-queue-active');
+            if (qActive) {
+                qActive.checked = cfg.is_queue_warning_active || false;
+                document.getElementById('cfg-queue-min').value = cfg.queue_warning_min || 2;
+                document.getElementById('cfg-queue-macro').value = cfg.queue_warning_macro || '';
+            }
+            document.getElementById('cfg-chat-warn-time').value = cfg.chat_warning_min || 8; 
+            document.getElementById('cfg-chat-time').value = cfg.chat_timeout_min || 10;
+            document.getElementById('cfg-email-warn-time').value = cfg.email_warning_hr || 24; 
+            document.getElementById('cfg-email-time').value = cfg.email_timeout_hr || 48;
+            document.getElementById('cfg-macro-warn-chat').value = cfg.warning_macro_chat || ''; 
+            document.getElementById('cfg-macro-warn-email').value = cfg.warning_macro_email || ''; 
+            document.getElementById('cfg-macro').value = cfg.closure_macro || '';
+            
+            agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags();
+        } catch(e) { console.error("Erro UI de configurações", e); }
+    },
+
+    renderSettingsTags() {
+        const container = document.getElementById('settings-tags-list'); if (!container) return;
+        let html = '';
+        agentApp.allSubjects.forEach(sub => {
+            const subsubs = agentApp.allSubsubjects.filter(ss => ss.subject_id === sub.id);
+            let subHtml = subsubs.map(ss => `<span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded font-bold flex items-center gap-1">${ss.label} <button onclick="agentApp.toggleSubsubject('${ss.id}', false)" class="hover:text-red-500 transition-colors flex items-center"><span class="material-symbols-outlined text-[12px]">close</span></button></span>`).join('');
+            html += `<div class="border border-slate-200 rounded-xl p-5 bg-white relative z-20 shadow-sm"><div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3"><span class="font-black text-slate-800 text-base flex items-center gap-2"><span class="material-symbols-outlined text-slate-400">label</span> ${sub.label}</span><button onclick="agentApp.toggleSubject('${sub.id}', false)" class="text-xs text-red-500 font-bold flex items-center gap-1 hover:underline bg-red-50 px-2 py-1 rounded"><span class="material-symbols-outlined text-[14px]">delete</span> Excluir Motivo</button></div><div class="flex flex-wrap gap-2 mb-4">${subHtml || '<span class="text-xs text-slate-400 font-medium italic">Nenhum submotivo cadastrado.</span>'}</div><div class="flex gap-2"><input type="text" id="new-tag2-${sub.id}" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-600" placeholder="Digite um novo Submotivo (Tag 2)..."><button onclick="agentApp.addTag2('${sub.id}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 rounded-lg text-xs font-bold transition-colors">Adicionar Submotivo</button></div></div>`;
+        });
+        container.innerHTML = html;
+    },
+
+    async addTag1() { const input = document.getElementById('new-tag1-input'); const val = input.value.trim(); if(!val) return; try { await agentAPI.createSubject(val); input.value = ''; agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro."); } },
+    async addTag2(subjectId) { const input = document.getElementById(`new-tag2-${subjectId}`); const val = input.value.trim(); if(!val) return; try { await agentAPI.createSubsubject(subjectId, val); input.value = ''; agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro."); } },
+    async toggleSubject(id, isActive) { if(!isActive && !confirm("Deseja realmente excluir este Motivo Principal e todos os submotivos vinculados a ele?")) return; try { await agentAPI.toggleSubject(id, isActive); agentApp.allSubjects = await agentAPI.getAllSubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir."); } },
+    async toggleSubsubject(id, isActive) { try { await agentAPI.toggleSubsubject(id, isActive); agentApp.allSubsubjects = await agentAPI.getAllSubsubjects(); agentApp.renderSettingsTags(); } catch(e) { alert("Erro ao excluir submotivo."); } },
+    insertMacroVar(variable, targetId = 'cfg-macro') { const txt = document.getElementById(targetId); if(!txt) return; const start = txt.selectionStart; const end = txt.selectionEnd; txt.value = txt.value.substring(0, start) + variable + txt.value.substring(end); txt.focus(); },
+
+    async saveSettings() {
+        const btn = document.getElementById('btn-save-cfg'); const origHtml = btn.innerHTML; btn.innerHTML = `<span class="material-symbols-outlined animate-spin">refresh</span> Salvando...`;
+        try {
+            const chatWarn = parseInt(document.getElementById('cfg-chat-warn-time').value) || 8; const chatClose = parseInt(document.getElementById('cfg-chat-time').value) || 10;
+            const emailWarn = parseInt(document.getElementById('cfg-email-warn-time').value) || 24; const emailClose = parseInt(document.getElementById('cfg-email-time').value) || 48;
+
+            if (chatWarn >= chatClose) { alert("ERRO: No Canal WEB, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
+            if (emailWarn >= emailClose) { alert("ERRO: No Canal E-mail, o tempo de Alerta deve ser MENOR que o tempo de Fechar."); return; }
+
+            const payload = { chat_warning_min: chatWarn, chat_timeout_min: chatClose, email_warning_hr: emailWarn, email_timeout_hr: emailClose, warning_macro_chat: document.getElementById('cfg-macro-warn-chat').value, warning_macro_email: document.getElementById('cfg-macro-warn-email').value, closure_macro: document.getElementById('cfg-macro').value };
+            const qActive = document.getElementById('cfg-queue-active');
+            if (qActive) { payload.is_queue_warning_active = qActive.checked; payload.queue_warning_min = parseInt(document.getElementById('cfg-queue-min').value) || 2; payload.queue_warning_macro = document.getElementById('cfg-queue-macro').value; }
+            
+            await agentAPI.updateSystemSettings(payload); agentApp.systemSettings = Object.assign({}, agentApp.systemSettings, payload); alert("Configurações atualizadas com sucesso!");
+        } catch (e) { alert("Erro ao salvar as configurações."); } finally { btn.innerHTML = origHtml; }
+    },
+
     async loadTeam() {
         try {
             const team = await agentAPI.getTeamProfiles(); const logs = await agentAPI.getAgentLogsToday(); 
             agentApp.allTeamProfiles = team; agentApp.allTeamLogs = logs; agentApp.renderTeamTable();
         } catch (e) { console.error("Falha ao carregar equipe:", e); }
     },
-    filterTeamTable() {
-        agentApp.teamSearchQuery = document.getElementById('team-search').value.toLowerCase(); agentApp.renderTeamTable();
-    },
+    filterTeamTable() { agentApp.teamSearchQuery = document.getElementById('team-search').value.toLowerCase(); agentApp.renderTeamTable(); },
     renderTeamTable() {
         const tbody = document.getElementById('team-tbody'); if (!agentApp.allTeamProfiles) return;
         const filteredTeam = agentApp.allTeamProfiles.filter(m => m.full_name.toLowerCase().includes(agentApp.teamSearchQuery));
@@ -717,32 +696,30 @@ const App = {
     async openInternalChat(targetId = null, targetName = null) {
         if (targetId) { agentApp.internalChatTarget = targetId; document.getElementById('internal-chat-target-name').innerText = targetName; }
         document.getElementById('btn-internal-alert').classList.add('hidden-view'); document.getElementById('modal-internal-chat').classList.remove('hidden-view');
-        const content = document.getElementById('internal-chat-content'); content.innerHTML = '<div class="text-center text-slate-400 text-xs font-bold">Carregando o histórico...</div>';
+        const content = document.getElementById('internal-chat-content'); content.innerHTML = '<div class="text-center text-slate-400 text-xs font-bold">Carregando...</div>';
         try {
-            if (!agentApp.internalChatTarget) throw new Error("ID do usuário alvo não fornecido.");
+            if (!agentApp.internalChatTarget) throw new Error("ID não fornecido.");
             const msgs = await agentAPI.getInternalMessages(agentApp.currentUser.id, agentApp.internalChatTarget);
             content.innerHTML = ''; msgs.forEach(m => agentApp.renderInternalMsg(m, m.sender_id === agentApp.currentUser.id));
-        } catch(e) { console.error("Erro Chat Interno:", e); content.innerHTML = `<div class="text-center text-red-400 text-xs font-bold">Falha ao abrir a conversa.</div>`; }
+        } catch(e) { content.innerHTML = `<div class="text-center text-red-400 text-xs font-bold">Falha.</div>`; }
     },
     closeInternalChat() { document.getElementById('modal-internal-chat').classList.add('hidden-view'); },
     renderInternalMsg(msg, isMe) {
-        const content = document.getElementById('internal-chat-content');
-        const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+        const content = document.getElementById('internal-chat-content'); const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
         content.innerHTML += `<div class="flex ${isMe ? 'justify-end' : 'justify-start'} w-full"><div class="max-w-[85%] p-2 rounded-xl text-xs font-medium shadow-sm ${isMe ? 'bg-slate-800 text-white rounded-tr-none' : 'bg-white border text-slate-800 rounded-tl-none'}"><div class="whitespace-pre-wrap">${msg.content}</div><div class="text-[8px] text-right mt-1 opacity-60 font-bold">${timeStr}</div></div></div>`;
         content.scrollTop = content.scrollHeight;
     },
-    async approveMember(id) { if(confirm("Deseja realmente aprovar este analista?")) { await agentAPI.approveUser(id, 'analista'); agentApp.loadTeam(); } },
+    async approveMember(id) { if(confirm("Aprovar analista?")) { await agentAPI.approveUser(id, 'analista'); agentApp.loadTeam(); } },
     async toggleChannel(agentId, channel, isEnabled) { try { await agentAPI.toggleChannel(agentId, channel, isEnabled); if (!isEnabled) { await agentAPI.releaseTicketsByChannel(agentId, channel); } agentApp.loadTeam(); } catch (e) { agentApp.loadTeam(); } },
     async toggleSkill(agentId, subjectId, isAdding) { try { await agentAPI.toggleAgentSkill(agentId, subjectId, isAdding); agentApp.loadTeam(); } catch (e) { agentApp.loadTeam(); } },
     
-    // ATALHOS PARA O CLIENTE VER O HISTÓRICO
     async loadCustomerHistory(email) {
         try {
             const hist = await agentAPI.getCustomerHistoryByEmail(email); const container = document.getElementById('history-list');
             if(hist.length === 0) { container.innerHTML = '<div class="text-xs text-slate-400 font-bold">Nenhum atendimento anterior.</div>'; return; }
             container.innerHTML = hist.map(h => {
                 const tagsHtml = h.agent_tag1 ? `<div class="mt-2 text-[10px]"><span class="bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold">${h.agent_tag1}</span> <span class="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold">${h.agent_tag2 || ''}</span></div><div class="text-[10px] text-slate-500 mt-1 italic bg-slate-50 p-1.5 rounded">"${h.agent_notes || ''}"</div>` : '';
-                return `<div class="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-start transition-all hover:border-blue-300 relative z-20"><div class="flex-1"><div class="flex justify-between items-center w-full"><div class="text-[10px] font-black text-blue-600">HZ-${h.protocol_number}</div><div class="text-[9px] font-bold text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><div class="text-[11px] font-bold text-slate-700 mt-1 truncate max-w-[200px]">Original: ${h.ticket_subjects?.label || 'Sem Assunto'}</div>${tagsHtml}</div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa Completa" class="ml-2 w-8 h-8 flex shrink-0 items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`
+                return `<div class="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-start transition-all hover:border-blue-300 relative z-20"><div class="flex-1"><div class="flex justify-between items-center w-full"><div class="text-[10px] font-black text-blue-600">HZ-${h.protocol_number}</div><div class="text-[9px] font-bold text-slate-400">${new Date(h.created_at).toLocaleDateString()}</div></div><div class="text-[11px] font-bold text-slate-700 mt-1 truncate max-w-[200px]">Original: ${h.ticket_subjects?.label || 'Sem Assunto'}</div>${tagsHtml}</div><button onclick="agentApp.viewPastChat('${h.id}', '${h.protocol_number}')" title="Ver Conversa" class="ml-2 w-8 h-8 flex shrink-0 items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all"><span class="material-symbols-outlined text-sm">visibility</span></button></div>`
             }).join('');
         } catch (e) {}
     },

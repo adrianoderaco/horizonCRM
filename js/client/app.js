@@ -6,9 +6,8 @@ const ClientApp = {
     messageSub: null,
     currentLang: 'pt',
     hasRated: false,
-    allSubjects: [], // Guarda os assuntos originais para traduzir dinamicamente
+    allSubjects: [], 
 
-    // Dicionário Estático da Tela do Cliente
     i18n: {
         'pt': {
             'lbl-greeting': 'Como podemos ajudar?',
@@ -69,7 +68,6 @@ const ClientApp = {
     async init() {
         window.clientApp = this;
         
-        // Listener de Idioma (Agora com await para dar tempo de traduzir os motivos)
         document.getElementById('client-language-select')?.addEventListener('change', async (e) => {
             await this.setLanguage(e.target.value);
         });
@@ -86,16 +84,9 @@ const ClientApp = {
             const email = document.getElementById('client-email').value;
 
             try {
-                if (isTracking) {
-                    await this.trackTicket(email);
-                } else {
-                    await this.createTicket();
-                }
-            } catch(err) {
-                alert("Erro: " + err.message);
-            } finally {
-                btn.innerHTML = orig;
-            }
+                if (isTracking) await this.trackTicket(email);
+                else await this.createTicket();
+            } catch(err) { alert("Erro: " + err.message); } finally { btn.innerHTML = orig; }
         });
 
         document.getElementById('client-chat-form')?.addEventListener('submit', async (e) => {
@@ -104,20 +95,21 @@ const ClientApp = {
             const text = input.value.trim();
             if (!text || !this.ticketId) return;
 
-            // Mostra na tela na mesma hora
             this.renderMsg(text, 'customer');
             input.value = '';
 
-            try {
-                // Ao salvar no banco, mandamos o texto original. O agente traduz lá na ponta dele.
-                await this.sendMessage(text);
-            } catch(err) {
-                alert("Falha ao enviar.");
-            }
+            try { await this.sendMessage(text); } catch(err) { alert("Falha ao enviar."); }
         });
 
-        // Configuração de Estrelas NPS
         this.setupRatingStars();
+    },
+
+    // FUNÇÃO DE SOM DO CLIENTE
+    playAlert() {
+        try {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+            audio.play();
+        } catch(e) { console.error("Erro áudio", e); }
     },
 
     async setLanguage(lang) {
@@ -125,7 +117,6 @@ const ClientApp = {
         const dict = this.i18n[lang];
         if (!dict) return;
 
-        // Traduz os textos fixos da tela
         for (const [id, text] of Object.entries(dict)) {
             const el = document.getElementById(id);
             if (el) {
@@ -134,13 +125,8 @@ const ClientApp = {
             }
         }
         
-        // Refaz a lista de assuntos traduzida
         await this.renderSubjects();
-        
-        // Força a recarga da tela de chat para traduzir mensagens recebidas
-        if (this.ticketId) {
-            this.loadChat(this.ticketId);
-        }
+        if (this.ticketId) this.loadChat(this.ticketId);
     },
 
     async translate(text) {
@@ -151,12 +137,9 @@ const ClientApp = {
             let translated = '';
             data[0].forEach(item => translated += item[0]);
             return translated;
-        } catch(e) {
-            return text;
-        }
+        } catch(e) { return text; }
     },
 
-    // Busca os assuntos do banco apenas uma vez e salva na memória
     async loadSubjects() {
         const { data, error } = await supabase.from('ticket_subjects').select('*').eq('is_active', true);
         if (error) return;
@@ -164,14 +147,11 @@ const ClientApp = {
         await this.renderSubjects();
     },
 
-    // Renderiza a lista de assuntos e traduz on-the-fly
     async renderSubjects() {
         const select = document.getElementById('client-subject');
         if (!select) return;
 
         const placeholderText = this.i18n[this.currentLang]['lbl-select-topic'] || 'Selecione um assunto...';
-        
-        // Limpa tudo, mas recoloca o placeholder traduzido
         select.innerHTML = `<option value="" disabled selected id="lbl-select-topic">${placeholderText}</option>`;
         
         for (const sub of this.allSubjects) {
@@ -182,7 +162,7 @@ const ClientApp = {
 
     toggleViewMode() {
         const isTracking = document.getElementById('new-ticket-fields').classList.contains('hidden-view');
-        const btnStart = document.getElementById('lbl-btn-start');
+        const btnStart = document.getElementById('btn-start').querySelector('span:first-child');
         const btnToggle = document.getElementById('btn-toggle-mode');
         
         if (isTracking) {
@@ -190,10 +170,8 @@ const ClientApp = {
             document.getElementById('client-subject').required = true;
             document.getElementById('client-initial-message').required = true;
             
-            const txtBtn = this.i18n[this.currentLang]['lbl-btn-start'];
-            const txtTog = this.i18n[this.currentLang]['btn-toggle-mode'];
-            btnStart.innerText = txtBtn || "Iniciar Atendimento";
-            btnToggle.innerText = txtTog || "Já tem um protocolo? Acompanhe aqui";
+            btnStart.innerText = this.i18n[this.currentLang]['lbl-btn-start'] || "Iniciar Atendimento";
+            btnToggle.innerText = this.i18n[this.currentLang]['btn-toggle-mode'] || "Já tem um protocolo? Acompanhe aqui";
         } else {
             document.getElementById('new-ticket-fields').classList.add('hidden-view');
             document.getElementById('client-subject').required = false;
@@ -210,7 +188,6 @@ const ClientApp = {
         const subjectId = document.getElementById('client-subject').value;
         const message = document.getElementById('client-initial-message').value;
 
-        // Verifica Cliente
         let { data: customer } = await supabase.from('customers').select('id').eq('email', email).single();
         if (!customer) {
             const { data: newCustomer, error: errC } = await supabase.from('customers').insert([{ full_name: name, email: email }]).select().single();
@@ -219,23 +196,14 @@ const ClientApp = {
         }
         this.customerId = customer.id;
 
-        // Cria Ticket
         const { data: ticket, error: errT } = await supabase.from('tickets').insert([{ 
-            customer_id: customer.id, 
-            subject_id: subjectId, 
-            channel: 'web', 
-            status: 'open',
-            last_sender: 'customer',
-            last_interaction_at: new Date()
+            customer_id: customer.id, subject_id: subjectId, channel: 'web', status: 'open', last_sender: 'customer', last_interaction_at: new Date()
         }]).select('id, protocol_number, ticket_subjects(label)').single();
         if (errT) throw errT;
         
         this.ticketId = ticket.id;
-
-        // Envia primeira mensagem
         await this.sendMessage(message);
 
-        // Muda Tela
         this.setupChatUI(ticket);
         this.loadChat(ticket.id);
     },
@@ -248,9 +216,7 @@ const ClientApp = {
 
         const { data: tickets, error } = await supabase.from('tickets')
             .select('id, protocol_number, status, ticket_subjects(label)')
-            .eq('customer_id', customer.id)
-            .order('created_at', { ascending: false })
-            .limit(1);
+            .eq('customer_id', customer.id).order('created_at', { ascending: false }).limit(1);
 
         if (error || tickets.length === 0) throw new Error("Nenhum chamado aberto.");
         
@@ -260,9 +226,7 @@ const ClientApp = {
         this.setupChatUI(ticket);
         this.loadChat(ticket.id);
 
-        if (ticket.status === 'closed') {
-            this.showRatingModal();
-        }
+        if (ticket.status === 'closed') this.showRatingModal();
     },
 
     setupChatUI(ticket) {
@@ -270,10 +234,7 @@ const ClientApp = {
         document.getElementById('view-chat').classList.remove('hidden-view');
         document.getElementById('chat-protocol').innerText = `HZ-${ticket.protocol_number}`;
         
-        // Traduz o assunto que fica fixo no topo do chat também
-        this.translate(ticket.ticket_subjects?.label || '').then(res => {
-            document.getElementById('chat-subject').innerText = res;
-        });
+        this.translate(ticket.ticket_subjects?.label || '').then(res => { document.getElementById('chat-subject').innerText = res; });
     },
 
     async loadChat(ticketId) {
@@ -283,11 +244,8 @@ const ClientApp = {
         container.innerHTML = '';
         
         for (let m of msgs) {
-            // Traduz a mensagem se foi o Agente ou o Sistema que mandou
             let textToShow = m.content;
-            if (m.sender_type !== 'customer') {
-                textToShow = await this.translate(m.content);
-            }
+            if (m.sender_type !== 'customer') textToShow = await this.translate(m.content);
             this.renderMsg(textToShow, m.sender_type);
         }
 
@@ -296,14 +254,14 @@ const ClientApp = {
         this.messageSub = supabase.channel(`client-${ticketId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, async payload => {
                 if (payload.new.sender_type !== 'customer') {
+                    // TOCA O SOM AQUI QUANDO O CLIENTE RECEBE MENSAGEM NOVA DO AGENTE OU SISTEMA
+                    this.playAlert();
                     const translatedText = await this.translate(payload.new.content);
                     this.renderMsg(translatedText, payload.new.sender_type);
                 }
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticketId}` }, payload => {
-                if (payload.new.status === 'closed') {
-                    this.showRatingModal();
-                }
+                if (payload.new.status === 'closed') this.showRatingModal();
             }).subscribe();
     },
 
@@ -332,15 +290,10 @@ const ClientApp = {
         await supabase.from('tickets').update({ last_sender: 'customer', last_interaction_at: new Date(), has_warning_sent: false }).eq('id', this.ticketId);
     },
 
-    leaveChat() {
-        location.reload();
-    },
+    leaveChat() { location.reload(); },
 
-    // ==========================================
-    // SISTEMA DE AVALIAÇÃO NPS E COMENTÁRIOS
-    // ==========================================
     showRatingModal() {
-        if (this.hasRated) return; // Se já avaliou na sessão atual, não incomoda de novo
+        if (this.hasRated) return; 
         document.getElementById('chat-input-area').classList.add('hidden-view');
         document.getElementById('view-rating').classList.remove('hidden-view');
     },
@@ -359,7 +312,6 @@ const ClientApp = {
             btn.addEventListener('click', (e) => {
                 selectedRating = parseInt(e.target.dataset.val);
                 
-                // Pintar estrelas selecionadas
                 document.querySelectorAll('.star-btn').forEach(b => {
                     const val = parseInt(b.dataset.val);
                     if (val <= selectedRating) {
@@ -371,7 +323,6 @@ const ClientApp = {
                     }
                 });
 
-                // Mostra a caixa de comentário e o botão de enviar
                 document.getElementById('rating-comment').classList.remove('hidden-view');
                 document.getElementById('btn-submit-rating').classList.remove('hidden-view');
             });
@@ -392,7 +343,6 @@ const ClientApp = {
                 
                 this.hasRated = true;
                 
-                // Agradecimento
                 document.getElementById('view-rating').innerHTML = `
                     <div class="bg-white border border-slate-200 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
                         <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><span class="material-symbols-outlined text-3xl">favorite</span></div>
@@ -403,7 +353,7 @@ const ClientApp = {
                 `;
             } catch(e) {
                 alert("Erro ao salvar avaliação.");
-                btn.innerHTML = "Tentar Novamente"; btn.disabled = false;
+                btn.innerHTML = this.currentLang === 'pt' ? "Tentar Novamente" : "Try Again"; btn.disabled = false;
             }
         });
     }
