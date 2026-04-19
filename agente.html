@@ -56,9 +56,7 @@
                 
                 <div class="flex items-center gap-4 shrink-0">
                     <button id="btn-internal-alert" onclick="agentApp.openInternalChat(this.dataset.senderId, this.dataset.senderName)" class="hidden-view bg-red-100 text-red-600 px-3 py-1.5 rounded-full flex items-center gap-1 font-bold text-xs animate-bounce" title="Nova Mensagem Interna"><span class="material-symbols-outlined text-[16px]">forum</span> Chat</button>
-                    
                     <button id="btn-settings" onclick="agentApp.navigate('settings')" class="hidden-view bg-slate-900 text-white px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-xs transition-colors hover:bg-slate-800" title="Configurações e Tags"><span class="material-symbols-outlined text-[16px]">settings</span> <span id="lbl-btn-settings">Configurações Gerais</span></button>
-                    
                     <label id="wrapper-routing" class="hidden-view flex items-center gap-2 cursor-pointer bg-slate-50 p-1.5 rounded-full border border-slate-200" title="Orquestrador Global">
                         <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Orquestrador</span>
                         <input type="checkbox" id="toggle-routing" onchange="agentApp.toggleGlobalOrchestrator(this.checked)" class="sr-only peer">
@@ -130,11 +128,9 @@
                                 <input type="date" id="dash-start" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500">
                                 <span class="text-slate-400 font-bold text-xs">até</span>
                                 <input type="date" id="dash-end" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500">
-                                
                                 <select id="dash-filter-group" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500 ml-2">
                                     <option value="">Todos os Grupos</option>
                                 </select>
-                                
                                 <button id="btn-filter-dash" onclick="agentApp.renderDashboard()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md transition-colors flex items-center gap-1">
                                     <span class="material-symbols-outlined text-[14px]">filter_alt</span> Filtrar
                                 </button>
@@ -179,7 +175,32 @@
                         <div class="bg-white p-8 rounded-3xl border shadow-sm space-y-8">
                             
                             <div>
-                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2 mb-6"><span class="material-symbols-outlined text-blue-600">timer</span> SLA: Alertas e Encerramento Automático</h3>
+                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2 mb-6"><span class="material-symbols-outlined text-blue-600">groups</span> Fila Extrema (Aviso Automático)</h3>
+                                
+                                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" id="cfg-queue-active" class="w-5 h-5 text-blue-600 border-slate-300 rounded">
+                                            <span class="text-sm font-bold text-slate-700">Ativar Aviso de Fila</span>
+                                        </label>
+                                        <div class="ml-4 border-l pl-4">
+                                            <label class="text-[10px] font-bold text-slate-500">Tempo de Espera para disparar (Minutos)</label>
+                                            <input type="number" id="cfg-queue-min" class="w-24 p-2 bg-white border border-slate-200 rounded-lg outline-none font-medium text-sm ml-2" min="1">
+                                        </div>
+                                    </div>
+                                    
+                                    <label class="block text-[10px] font-bold text-slate-500 mb-2 mt-4">Mensagem de Fila Extrema</label>
+                                    <div class="flex gap-2 mb-3">
+                                        <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]', 'cfg-queue-macro')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">+ Nome</button>
+                                        <button type="button" onclick="agentApp.insertMacroVar('[posição na fila]', 'cfg-queue-macro')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">+ Posição na Fila</button>
+                                        <button type="button" onclick="agentApp.insertMacroVar('[tempo médio]', 'cfg-queue-macro')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">+ Tempo Médio Espera</button>
+                                    </div>
+                                    <textarea id="cfg-queue-macro" class="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none font-medium text-sm resize-y h-24"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="border-t pt-8">
+                                <h3 class="text-lg font-black text-slate-800 border-b pb-4 flex items-center gap-2 mb-6"><span class="material-symbols-outlined text-blue-600">timer</span> SLA: Alerta de Inatividade e Encerramento</h3>
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm">
@@ -206,14 +227,16 @@
                                 <div class="mt-6">
                                     <label class="block text-xs font-bold text-slate-500 mb-2">Mensagem Final de Encerramento (Ambos os Canais)</label>
                                     <div class="flex gap-2 mb-3">
-                                        <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
-                                        <button type="button" onclick="agentApp.insertMacroVar('[protocolo]')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
+                                        <button type="button" onclick="agentApp.insertMacroVar('[nome do cliente]', 'cfg-macro')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Nome do Cliente</button>
+                                        <button type="button" onclick="agentApp.insertMacroVar('[protocolo]', 'cfg-macro')" class="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">+ Protocolo</button>
                                     </div>
                                     <textarea id="cfg-macro" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 font-medium resize-y h-24 leading-relaxed"></textarea>
                                 </div>
                             </div>
                             
-                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8"><span class="material-symbols-outlined">save</span> Salvar SLAs e Macros</button>
+                            <button id="btn-save-cfg" onclick="agentApp.saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-md flex justify-center items-center gap-2 mb-8">
+                                <span class="material-symbols-outlined">save</span> Salvar Configurações e Macros
+                            </button>
                             
                             <div class="border-t pt-8 mt-8">
                                 <h3 class="text-lg font-black text-slate-800 border-b pb-4 mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">category</span> Motivos e Submotivos (Tags de Classificação)</h3>
@@ -258,7 +281,7 @@
                                 <div><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Informações</h4><div class="bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="font-black text-slate-900 text-base" id="crm-name">...</div><div class="text-xs font-bold text-slate-500 mt-1 truncate" id="crm-email">...</div></div></div>
                                 <div>
                                     <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Classificação e Notas</h4>
-                                    <div class="text-[10px] font-bold text-slate-500 mb-2">Motivo Original: <span id="crm-customer-tag" class="text-blue-600"></span></div>
+                                    <div class="text-[10px] font-bold text-slate-500 mb-2">Motivo Original (Cliente): <span id="crm-customer-tag" class="text-blue-600"></span></div>
                                     <select id="crm-tag1" onchange="agentApp.filterTag2()" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-2 outline-none text-slate-700 focus:ring-2 focus:ring-blue-600"><option value="">Selecione o Motivo (Tag 1)...</option></select>
                                     <select id="crm-tag2" class="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold mb-3 outline-none text-slate-700 focus:ring-2 focus:ring-blue-600"><option value="">Selecione o Submotivo (Tag 2)...</option></select>
                                     <textarea id="crm-notes" class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm outline-none resize-none font-medium focus:ring-2 focus:ring-blue-600" rows="3" placeholder="Observações do atendimento (Obrigatório para fechar)..."></textarea>

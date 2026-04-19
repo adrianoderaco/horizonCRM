@@ -38,7 +38,7 @@ export const agentAPI = {
 
     async getPendingTickets() {
         const { data, error } = await supabase.from('tickets')
-            .select(`id, protocol_number, channel, created_at, assigned_at, first_reply_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, customers (full_name, email), ticket_subjects (label)`)
+            .select(`id, protocol_number, channel, created_at, assigned_at, first_reply_at, status, agent_id, last_sender, last_interaction_at, is_upload_enabled, has_warning_sent, has_queue_warning_sent, customers (full_name, email), ticket_subjects (label)`)
             .in('status', ['open', 'in_progress'])
             .order('created_at', { ascending: true });
         if (error) throw error;
@@ -52,6 +52,31 @@ export const agentAPI = {
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
         return data;
+    },
+
+    // FUNÇÃO DA FILA EXTREMA: Calcula Posição e TME Médio do Dia
+    async getQueueStats(ticketCreatedAt) {
+        const { count } = await supabase.from('tickets')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'open')
+            .lt('created_at', ticketCreatedAt);
+            
+        const position = (count || 0) + 1;
+
+        const { data: recent } = await supabase.from('tickets')
+            .select('created_at, assigned_at')
+            .not('assigned_at', 'is', null)
+            .order('assigned_at', { ascending: false })
+            .limit(20);
+            
+        let avgMins = 5; 
+        if (recent && recent.length > 0) {
+            let totalMs = 0;
+            recent.forEach(t => totalMs += (new Date(t.assigned_at) - new Date(t.created_at)));
+            avgMins = Math.max(1, Math.floor((totalMs / recent.length) / 60000));
+        }
+
+        return { position, avgWaitMins: avgMins };
     },
 
     async getTicketDetails(ticketId) {
@@ -133,7 +158,6 @@ export const agentAPI = {
         const { error: msgErr } = await supabase.from('messages').insert([payload]);
         if (msgErr) throw msgErr;
         
-        // Verifica se é a primeira resposta para mudar a cor da bolha
         const { data: ticket } = await supabase.from('tickets').select('first_reply_at').eq('id', ticketId).single();
         const updates = { last_sender: 'agent', last_interaction_at: new Date(), has_warning_sent: false };
         if (ticket && !ticket.first_reply_at) { updates.first_reply_at = new Date(); }
@@ -142,14 +166,15 @@ export const agentAPI = {
         if (tkErr) throw tkErr;
     },
 
-    async sendSystemMessage(ticketId, content, markWarning = false) {
+    async sendSystemMessage(ticketId, content, warningType = null) {
         const payload = { ticket_id: ticketId, sender_type: 'system', content: content };
         const { error: msgErr } = await supabase.from('messages').insert([payload]);
         if (msgErr) throw msgErr;
         
-        if (markWarning) {
-            const { error: tkErr } = await supabase.from('tickets').update({ has_warning_sent: true }).eq('id', ticketId);
-            if (tkErr) throw tkErr;
+        if (warningType === 'sla') {
+            await supabase.from('tickets').update({ has_warning_sent: true }).eq('id', ticketId);
+        } else if (warningType === 'queue') {
+            await supabase.from('tickets').update({ has_queue_warning_sent: true }).eq('id', ticketId);
         }
     },
 
