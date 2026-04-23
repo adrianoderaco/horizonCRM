@@ -50,7 +50,7 @@ export const clientAPI = {
         const { error } = await supabase.from('messages').insert([payload]);
         if (error) throw error;
         
-        await supabase.from('tickets').update({ last_sender: 'customer', last_interaction_at: new Date() }).eq('id', ticketId);
+        await supabase.from('tickets').update({ last_sender: 'customer', last_interaction_at: new Date(), has_warning_sent: false }).eq('id', ticketId);
     },
 
     subscribeToTicket(ticketId, onUpdate) {
@@ -63,14 +63,14 @@ export const clientAPI = {
     subscribeToMessages(ticketId, onNewMessage) {
         return supabase.channel(`client-ticket-${ticketId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `ticket_id=eq.${ticketId}` }, payload => {
-                if (payload.new.sender_type === 'agent') {
-                    onNewMessage(payload.new.content, payload.new.file_url, payload.new.file_name, payload.new.file_type);
+                if (payload.new.sender_type !== 'customer') {
+                    onNewMessage(payload.new.content, payload.new.sender_type);
                 }
             }).subscribe();
     },
 
-    async submitNPS(ticketId, rating) {
-        const { error } = await supabase.from('tickets').update({ rating: rating }).eq('id', ticketId);
+    async submitNPS(ticketId, rating, comment) {
+        const { error } = await supabase.from('tickets').update({ rating: rating, rating_comment: comment }).eq('id', ticketId);
         if (error) throw error;
     }
 };
